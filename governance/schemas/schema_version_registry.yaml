@@ -1,0 +1,9 @@
+# governance/schemas/schema_version_registry.yaml
+# AD-009-EXT-001: Every FlatBuffers schema name -> current version.
+# govcheck verifies all committed .fbs schema names are registered here.
+schema_version: 1
+registry:
+  common.Header:
+    version: 1
+    introduced_at: "S0"
+    fbs_file: "schemas/common.fbs"

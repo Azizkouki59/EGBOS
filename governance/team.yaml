@@ -1,0 +1,14 @@
+# governance/team.yaml — Team membership registry
+# govcheck validates claim owners against this file (GC-E-019).
+# Solo founder mode: owner = "founder" auto-passes.
+schema_version: 1
+members:
+  - username: "founder"
+    role: "CTO"
+    github_username: "founder"
+    governance_authority:
+      - "claim_owner"
+      - "review_authority"
+      - "waiver_authority"
+      - "rfc_authority"
+    active: true

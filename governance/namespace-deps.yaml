@@ -1,0 +1,39 @@
+# governance/namespace-deps.yaml — Cross-namespace dependency graph
+# govcheck uses this to enforce GC-E-023 (undeclared cross-namespace deps).
+# GC-F-003 fires if this file is malformed.
+schema_version: 1
+namespaces:
+  bootstrap:
+    allowed_dependencies: []
+  ipc:
+    allowed_dependencies: ["bootstrap"]
+  wal:
+    allowed_dependencies: ["bootstrap"]
+  startup:
+    allowed_dependencies: ["bootstrap", "wal", "ipc"]
+  exec:
+    allowed_dependencies: ["bootstrap", "wal", "ipc", "allocator"]
+  allocator:
+    allowed_dependencies: ["bootstrap"]
+  ingestor:
+    allowed_dependencies: ["bootstrap"]
+  lob:
+    allowed_dependencies: ["bootstrap", "ingestor"]
+  feature:
+    allowed_dependencies: ["bootstrap", "lob"]
+  risk:
+    allowed_dependencies: ["bootstrap", "exec"]
+  regime:
+    allowed_dependencies: ["bootstrap", "feature"]
+  signal:
+    allowed_dependencies: ["bootstrap", "feature", "regime"]
+  model:
+    allowed_dependencies: ["bootstrap", "feature", "research"]
+  research:
+    allowed_dependencies: ["bootstrap", "feature", "data"]
+  data:
+    allowed_dependencies: ["bootstrap"]
+  ops:
+    allowed_dependencies: ["bootstrap", "exec", "wal"]
+  capacity:
+    allowed_dependencies: ["bootstrap", "exec"]

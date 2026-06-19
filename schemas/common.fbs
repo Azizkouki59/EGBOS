@@ -1,0 +1,11 @@
+// schemas/common.fbs
+// AD-009: FlatBuffers as exclusive schema language.
+// AD-009-EXT-001: schema_version at field ID 0.
+
+namespace egbos.common;
+
+// Base table — all inter-layer event tables must include schema_version
+// as their field ID 0 (uint16, always populated, never optional).
+table Header {
+  schema_version: uint16;  // Field ID 0 — mandatory
+}

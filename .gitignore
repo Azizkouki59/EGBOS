@@ -1,0 +1,43 @@
+# Build outputs
+build/
+build-asan/
+build-tsan/
+build-ubsan/
+cmake-build-*/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Compiled objects
+*.o
+*.a
+*.so
+*.out
+
+# Binaries
+govcheck/govcheck
+govcheck/govcheck_tests
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.uv/
+
+# Rust
+target/
+
+# Editor
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

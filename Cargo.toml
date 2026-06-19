@@ -1,0 +1,8 @@
+# Cargo.toml — Workspace Cargo manifest (L0 Rust connectivity)
+[workspace]
+resolver = "2"
+members = []
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"

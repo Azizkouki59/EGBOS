@@ -1,0 +1,4 @@
+# rust-toolchain.toml — Pinned Rust version for reproducible builds
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

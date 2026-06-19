@@ -1,0 +1,46 @@
+schema_version: 1
+claim_id: "CLAIM-000"
+namespace: "bootstrap"
+title: "Governance infrastructure bootstrap"
+text: |
+  The EGBOS governance infrastructure is operational. govcheck compiles,
+  passes its own test suite under ASAN/TSAN/UBSAN, validates claim schemas,
+  builds dependency graphs, detects cycles, verifies proof artifact integrity,
+  and enforces ownership constraints. CI gates C0, P1, and P2 are active
+  and blocking on all pull requests.
+verification_class: "V1"
+previous_class: null
+class_rationale: "Manual review of initial infrastructure setup. V1 because no automated enforcement of the bootstrap claim itself exists."
+enforcement_mechanism: "govcheck validate --scope C0 --strict (exit code 0)"
+enforcement_scope: "All governance/claims/*.yaml files. Schema validation, DAG integrity, artifact SHA-256, ownership, namespace dependencies."
+enforcement_gaps:
+  - "Does not verify that CI gates are actually configured in GitHub."
+  - "Does not verify toolchain versions — separate validation script."
+assumptions:
+  - "GitHub Actions runners have GCC 13 and Clang 17 available."
+  - "Repository branch protection rules enforce required status checks."
+composition_dependencies: []
+composed_verification_class: "V1"
+owner: "founder"
+review_authority: "founder"
+backup_owner: null
+remediation_category: null
+remediation_notes: ""
+deployment_blocking: false
+deployment_blocking_rationale: ""
+minimum_class_for_unblocked_deploy: "V1"
+rfc_references: []
+proof_artifacts: []
+review_history:
+  - date: "2026-06-17"
+    reviewer: "founder"
+    action: "created"
+    class_at_review: "V1"
+    notes: "Initial S0 bootstrap claim."
+created_at: "2026-06-17T00:00:00Z"
+created_by: "founder"
+last_reviewed: "2026-06-17T00:00:00Z"
+review_expiry: "2027-06-17T00:00:00Z"
+status: "active"
+superseded_by: null
+amendments: []

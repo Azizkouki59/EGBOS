@@ -1,0 +1,49 @@
+schema_version: 1
+claim_id: "CLAIM-GOVCHECK-001"
+namespace: "bootstrap"
+title: "govcheck binary self-verification at V4"
+text: |
+  The govcheck binary compiles clean under ASAN, TSAN, and UBSAN.
+  Its own unit tests (GoogleTest) pass under all three sanitizer profiles.
+  Its version is pinned in CI via GC-F-002. It is the first claim verified
+  before any other claim is evaluated. No capital gate (G1, G2, G4) may be
+  considered active until CLAIM-GOVCHECK-001 is at V4 on the target hardware_id.
+verification_class: "V4"
+previous_class: null
+class_rationale: "V4 — Empirical. Proof artifact contains exit codes from govcheck_tests under ASAN, TSAN, and UBSAN build profiles on the target hardware_id."
+enforcement_mechanism: "cmake --build . --target govcheck_tests && ctest -R govcheck (under ASAN, TSAN, UBSAN profiles)"
+enforcement_scope: "All govcheck source code. All test fixtures. All three sanitizer profiles."
+enforcement_gaps:
+  - "V4 on dev workstation does not transfer to production co-location hardware."
+  - "Does not verify that CI runners use the same hardware_id."
+assumptions:
+  - "ASAN, TSAN, UBSAN are available on the target compiler versions."
+  - "GoogleTest framework correctly reports failures."
+composition_dependencies: []
+composed_verification_class: "V4"
+owner: "founder"
+review_authority: "founder"
+backup_owner: null
+remediation_category: null
+remediation_notes: ""
+deployment_blocking: true
+deployment_blocking_rationale: "Root of governance trust chain. If govcheck is unverified, no other claim enforcement is trustworthy."
+minimum_class_for_unblocked_deploy: "V4"
+rfc_references: []
+proof_artifacts:
+  - path: "governance/proof_artifacts/govcheck_selftest_dev-workstation-001_2026-06-17.json"
+    type: "test_result"
+    sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+review_history:
+  - date: "2026-06-17"
+    reviewer: "founder"
+    action: "created"
+    class_at_review: "V4"
+    notes: "Initial govcheck self-verification. ASAN/TSAN/UBSAN all clean."
+created_at: "2026-06-17T00:00:00Z"
+created_by: "founder"
+last_reviewed: "2026-06-17T00:00:00Z"
+review_expiry: "2027-06-17T00:00:00Z"
+status: "active"
+superseded_by: null
+amendments: []

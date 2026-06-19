@@ -1,0 +1,10 @@
+# pyproject.toml — Python project config for uv
+[project]
+name = "egbos"
+requires-python = ">=3.11"
+
+[tool.uv]
+dev-dependencies = [
+    "pyyaml>=6.0",
+    "jsonschema>=4.0",
+]

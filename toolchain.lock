@@ -1,0 +1,8 @@
+# toolchain.lock — EGBOS pinned tool versions
+# Changes require RFC per I6 if they affect any V3+ claim.
+gcc_min: "13.1"
+clang_min: "17.0"
+cmake_min: "3.27"
+flatc_min: "24.3"
+clang_format_version: "17"
+clang_tidy_version: "17"
