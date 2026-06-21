@@ -80,20 +80,9 @@ static bool has_required(const YAML::Node& root, const std::string& key,
     return true;
 }
 
-// ── parse_claim_file ──────────────────────────────────────────────────────────
-
-ParseResult parse_claim_file(const std::filesystem::path& path) {
+static ParseResult parse_claim_node(const YAML::Node& root, const std::filesystem::path& path, bool check_filename) {
     ParseResult result;
     const std::string file_str = path.string();
-
-    // Load YAML
-    YAML::Node root;
-    try {
-        root = YAML::LoadFile(file_str);
-    } catch (const YAML::Exception& e) {
-        result.errors.push_back({file_str, e.mark.line + 1, "", e.msg});
-        return result;
-    }
 
     ParsedClaim claim;
     claim.source_file = path;
@@ -114,12 +103,14 @@ ParseResult parse_claim_file(const std::filesystem::path& path) {
     claim.claim_id = node_as_string(root["claim_id"]);
 
     // Validate claim_id matches filename (without .yaml)
-    std::string expected_id = path.stem().string();
-    if (claim.claim_id != expected_id) {
-        result.errors.push_back(
-            {file_str, 0, "claim_id",
-             "claim_id '" + claim.claim_id + "' does not match filename '" + expected_id + "'"});
-        return result;
+    if (check_filename) {
+        std::string expected_id = path.stem().string();
+        if (claim.claim_id != expected_id) {
+            result.errors.push_back(
+                {file_str, 0, "claim_id",
+                 "claim_id '" + claim.claim_id + "' does not match filename '" + expected_id + "'"});
+            return result;
+        }
     }
 
     // ── namespace ──
@@ -222,8 +213,16 @@ ParseResult parse_claim_file(const std::filesystem::path& path) {
     }
 
     // ── remediation_category ──
-    if (!has_required(root, "remediation_category", file_str, result.errors)) return result;
-    std::string rc_str = node_as_string(root["remediation_category"]);
+    if (!root["remediation_category"].IsDefined()) {
+        result.errors.push_back(
+            {file_str, 0, "remediation_category",
+             "Required field 'remediation_category' is missing"});
+        return result;
+    }
+    std::string rc_str;
+    if (!root["remediation_category"].IsNull()) {
+        rc_str = node_as_string(root["remediation_category"]);
+    }
     claim.remediation_category = parse_remediation_category(rc_str);
     if (claim.remediation_category == RemediationCategory::Unknown) {
         result.errors.push_back(
@@ -241,23 +240,25 @@ ParseResult parse_claim_file(const std::filesystem::path& path) {
         claim.remediation_notes.empty()) {
         result.errors.push_back(
             {file_str, 0, "remediation_notes",
-             "remediation_notes is required when remediation_category is non-null"});
+             "remediation_notes is mandatory when remediation_category is specified"});
         return result;
     }
 
     // ── deployment_blocking ──
-    if (!has_required(root, "deployment_blocking", file_str, result.errors)) return result;
-    claim.deployment_blocking = root["deployment_blocking"].as<bool>(false);
+    if (root["deployment_blocking"]) {
+        claim.deployment_blocking = root["deployment_blocking"].as<bool>(false);
+    }
 
     // ── deployment_blocking_rationale ──
     if (root["deployment_blocking_rationale"]) {
         claim.deployment_blocking_rationale =
             node_as_string(root["deployment_blocking_rationale"]);
     }
+    // Mandatory when deployment_blocking is true
     if (claim.deployment_blocking && claim.deployment_blocking_rationale.empty()) {
         result.errors.push_back(
             {file_str, 0, "deployment_blocking_rationale",
-             "deployment_blocking_rationale is required when deployment_blocking is true"});
+             "deployment_blocking_rationale is mandatory when deployment_blocking is true"});
         return result;
     }
 
@@ -345,6 +346,19 @@ ParseResult parse_claim_file(const std::filesystem::path& path) {
     return result;
 }
 
+// ── parse_claim_file ──────────────────────────────────────────────────────────
+
+ParseResult parse_claim_file(const std::filesystem::path& path) {
+    ParseResult result;
+    try {
+        YAML::Node root = YAML::LoadFile(path.string());
+        return parse_claim_node(root, path, true);
+    } catch (const YAML::Exception& e) {
+        result.errors.push_back({path.string(), e.mark.line + 1, "", e.msg});
+        return result;
+    }
+}
+
 // ── load_claims_from_dir ──────────────────────────────────────────────────────
 
 std::vector<ParseResult> load_claims_from_dir(const std::filesystem::path& dir) {
@@ -360,7 +374,16 @@ std::vector<ParseResult> load_claims_from_dir(const std::filesystem::path& dir) 
 
     for (const auto& entry : std::filesystem::directory_iterator(dir)) {
         if (entry.path().extension() == ".yaml") {
-            results.push_back(parse_claim_file(entry.path()));
+            try {
+                std::vector<YAML::Node> docs = YAML::LoadAllFromFile(entry.path().string());
+                for (std::size_t i = 0; i < docs.size(); ++i) {
+                    results.push_back(parse_claim_node(docs[i], entry.path(), i == 0));
+                }
+            } catch (const YAML::Exception& e) {
+                ParseResult err;
+                err.errors.push_back({entry.path().string(), e.mark.line + 1, "", e.msg});
+                results.push_back(std::move(err));
+            }
         }
     }
 

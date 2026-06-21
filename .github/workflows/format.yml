@@ -1,0 +1,62 @@
+name: P1 Gate - Format, Lint & Fixtures
+
+on:
+  pull_request:
+    branches:
+      - '**'
+
+jobs:
+  clang-format-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-17
+
+      - name: Run Clang-Format check
+        run: |
+          find govcheck/ engine/ -name '*.cpp' -o -name '*.h' | xargs clang-format-17 --dry-run --Werror
+
+  clang-tidy-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies & clang-tidy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang-tidy-17 libssl-dev git
+
+      - name: Configure CMake to generate compile_commands.json
+        run: |
+          cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Run Clang-Tidy check
+        run: |
+          clang-tidy-17 -p build $(find govcheck/src -name '*.cpp')
+
+  verify-fixtures:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake gcc-13 g++-13 libssl-dev git
+
+      - name: Build govcheck
+        run: |
+          cmake -B build -DCMAKE_CXX_COMPILER=g++-13
+          cmake --build build --target govcheck
+
+      - name: Run Fixture Regression script
+        run: |
+          chmod +x tests/governance/fixtures/verify_all_fixtures.sh
+          bash tests/governance/fixtures/verify_all_fixtures.sh

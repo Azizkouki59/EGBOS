@@ -4,6 +4,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ── Dependencies via FetchContent ──
+# Spec: S0 §4.7 — exact pinned versions, no find_package fallback.
 include(FetchContent)
 
 FetchContent_Declare(yaml-cpp
@@ -20,7 +21,15 @@ FetchContent_Declare(googletest
 
 FetchContent_MakeAvailable(yaml-cpp json googletest)
 
-# ── Sanitizer flags ──
+# ── OpenSSL (system — provides SHA-256 for GC-E-018) ──
+find_package(OpenSSL REQUIRED)
+
+# ── Sanitizer profiles ──
+# Applied at directory scope so both govcheck and govcheck_tests are sanitized.
+# Required by S0 §7.4: all tests must pass under ASAN, TSAN, UBSAN.
+option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
+option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+option(ENABLE_UBSAN "Enable UBSanitizer" OFF)
 if(ENABLE_ASAN)
   add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
   add_link_options(-fsanitize=address)
@@ -60,9 +69,6 @@ target_link_libraries(govcheck PRIVATE
   OpenSSL::Crypto)
 target_include_directories(govcheck PRIVATE src/)
 
-find_package(OpenSSL REQUIRED)
-target_link_libraries(govcheck PRIVATE OpenSSL::Crypto)
-
 # ── Tests ──
 enable_testing()
 
@@ -78,15 +84,19 @@ add_executable(govcheck_tests
   ${TEST_SOURCES}
   ${GOVCHECK_SOURCES})
 
+# GOVCHECK_TEST_MODE suppresses main() in src/main.cpp so GTest::gtest_main
+# can provide its own entry point. See main.cpp #ifndef GOVCHECK_TEST_MODE.
 target_compile_definitions(govcheck_tests PRIVATE GOVCHECK_TEST_MODE)
 target_link_libraries(govcheck_tests PRIVATE
   yaml-cpp
   nlohmann_json::nlohmann_json
   OpenSSL::Crypto
+  GTest::gtest
   GTest::gtest_main)
 target_include_directories(govcheck_tests PRIVATE src/)
 
 include(GoogleTest)
 gtest_discover_tests(govcheck_tests)
 
+# Copy test fixtures to build dir (required by test runtime file paths).
 add_subdirectory(tests)

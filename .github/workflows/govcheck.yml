@@ -1,0 +1,39 @@
+name: C0 Gate - Govcheck Validation
+
+on:
+  pull_request:
+    branches:
+      - '**'
+  push:
+    branches:
+      - main
+
+jobs:
+  govcheck-validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (cmake, gcc-13, openssl-dev)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake gcc-13 g++-13 libssl-dev git
+
+      - name: Build govcheck
+        run: |
+          cmake -B build -DCMAKE_CXX_COMPILER=g++-13
+          cmake --build build --target govcheck
+
+      - name: Run C0 Validation Check
+        env:
+          GOVCHECK_EXPECTED_VERSION: "1.0.0"
+        run: |
+          ./build/govcheck/govcheck validate --scope C0 --strict --repo-root . > govcheck-report.json
+          cat govcheck-report.json
+
+      - name: Upload Govcheck Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: govcheck-report
+          path: govcheck-report.json

@@ -31,9 +31,9 @@ deployment_blocking_rationale: "Root of governance trust chain. If govcheck is u
 minimum_class_for_unblocked_deploy: "V4"
 rfc_references: []
 proof_artifacts:
-  - path: "governance/proof_artifacts/govcheck_selftest_dev-workstation-001_2026-06-17.json"
+  - path: "governance/proof_artifacts/govcheck_selftest_dev-workstation-001_2026-06-20.json"
     type: "test_result"
-    sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+    sha256: "1ee7dc8cbd98c00cbac719ec8136ad0e2176bb58800663e68e2b61588bc56ad5"
 review_history:
   - date: "2026-06-17"
     reviewer: "founder"

@@ -1,0 +1,30 @@
+{
+  "claim_id": "CLAIM-GOVCHECK-001",
+  "hardware_id": "dev-workstation-001",
+  "date": "2026-06-20",
+  "kernel": "6.6.87.2-microsoft-standard-WSL2",
+  "compiler_gcc": "13",
+  "compiler_clang": "17.0.6",
+  "profiles": {
+    "asan": {
+      "build_exit_code": 0,
+      "test_exit_code": 0,
+      "tests_passed": 29,
+      "tests_failed": 0
+    },
+    "tsan": {
+      "build_exit_code": 0,
+      "test_exit_code": 0,
+      "tests_passed": 29,
+      "tests_failed": 0
+    },
+    "ubsan": {
+      "build_exit_code": 0,
+      "test_exit_code": 0,
+      "tests_passed": 29,
+      "tests_failed": 0
+    }
+  },
+  "govcheck_version": "1.0.0",
+  "sha256_self": "e0edb6ff4c070624a985f0ab9dd799a46ed1e3f6886cfdd5906b42ec7e635bda"
+}

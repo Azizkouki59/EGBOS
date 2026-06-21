@@ -1,0 +1,44 @@
+name: Dedicated Sanitizer Runs & Proof Generation
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '0 0 * * *' # Nightly at midnight
+
+jobs:
+  nightly-sanitizers:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Compiler & Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-13 g++-13 clang-17 cmake libssl-dev git
+
+      - name: Install FlatBuffers flatc >=24.3 (toolchain.lock flatc_min)
+        run: |
+          FLATC_VERSION="24.3.25"
+          wget -q "https://github.com/google/flatbuffers/releases/download/v${FLATC_VERSION}/Linux.flatc.binary.g++-10.zip" -O /tmp/flatc.zip
+          unzip -q /tmp/flatc.zip -d /tmp/flatc_bin
+          sudo mv /tmp/flatc_bin/flatc /usr/local/bin/flatc
+          sudo chmod +x /usr/local/bin/flatc
+          flatc --version
+
+      - name: Run Toolchain Validation
+        run: |
+          chmod +x scripts/validate_toolchain.sh
+          ./scripts/validate_toolchain.sh
+
+      - name: Generate Proof Artifact
+        run: |
+          chmod +x scripts/generate_proof_artifact.sh
+          export EGBOS_HARDWARE_ID="github-runner"
+          ./scripts/generate_proof_artifact.sh
+
+      - name: Verify exit status
+        run: |
+          echo "Sanitizer runs and proof generation complete."

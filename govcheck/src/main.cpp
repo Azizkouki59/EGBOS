@@ -64,6 +64,11 @@ int run_validate(const std::vector<std::string>& args) {
         return 3;
     }
 
+    if (scope != "C0" && scope != "C1" && scope != "C2" && scope != "C3" && scope != "C4") {
+        print_usage_error("validate: invalid --scope");
+        return 3;
+    }
+
     const bool strict = has_flag(args, "--strict");
 
     std::string repo_root_str = ".";
@@ -97,6 +102,7 @@ int run_claims(const std::vector<std::string>& args) {
 
 } // namespace
 
+#ifndef GOVCHECK_TEST_MODE
 int main(int argc, char** argv) {
     if (argc < 2) {
         print_usage_error("missing subcommand");
@@ -119,3 +125,4 @@ int main(int argc, char** argv) {
     print_usage_error("unknown subcommand '" + subcommand + "'");
     return 3;
 }
+#endif  // GOVCHECK_TEST_MODE

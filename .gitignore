@@ -3,6 +3,9 @@ build/
 build-asan/
 build-tsan/
 build-ubsan/
+build_asan/
+build_tsan/
+build_ubsan/
 cmake-build-*/
 
 # CMake
@@ -11,6 +14,11 @@ CMakeFiles/
 cmake_install.cmake
 Makefile
 *.cmake
+compile_commands.json
+
+# CTest / testing
+Testing/
+CTestTestfile.cmake
 
 # Compiled objects
 *.o
@@ -41,3 +49,14 @@ target/
 # OS
 .DS_Store
 Thumbs.db
+
+# Downloads / temporary artefacts (S0 §2 — not in spec tree)
+*.patch
+*.zip
+wget-log*
+AUDIT_PROMPT_S0.md
+
+# Log files
+*.log
+configure.log
+build.log

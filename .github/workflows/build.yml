@@ -1,0 +1,85 @@
+name: P2 Gate - Build Matrix
+
+on:
+  pull_request:
+    branches:
+      - '**'
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            compiler_version: '13'
+            build_type: Release
+            asan: OFF
+            tsan: OFF
+            ubsan: OFF
+          - compiler: gcc
+            compiler_version: '13'
+            build_type: Debug
+            asan: ON
+            tsan: OFF
+            ubsan: ON
+          - compiler: clang
+            compiler_version: '17'
+            build_type: Release
+            asan: OFF
+            tsan: OFF
+            ubsan: OFF
+          - compiler: clang
+            compiler_version: '17'
+            build_type: Debug
+            asan: ON
+            tsan: OFF
+            ubsan: ON
+          - compiler: clang
+            compiler_version: '17'
+            build_type: Debug
+            asan: OFF
+            tsan: ON
+            ubsan: OFF
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install compiler & dependencies
+        run: |
+          sudo apt-get update
+          if [ "${{ matrix.compiler }}" = "gcc" ]; then
+            sudo apt-get install -y gcc-${{ matrix.compiler_version }} g++-${{ matrix.compiler_version }}
+          else
+            sudo apt-get install -y clang-${{ matrix.compiler_version }}
+          fi
+          sudo apt-get install -y cmake libssl-dev git
+
+      - name: Configure CMake
+        run: |
+          if [ "${{ matrix.compiler }}" = "gcc" ]; then
+            export CC=gcc-${{ matrix.compiler_version }}
+            export CXX=g++-${{ matrix.compiler_version }}
+          else
+            export CC=clang-${{ matrix.compiler_version }}
+            export CXX=clang++-${{ matrix.compiler_version }}
+          fi
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DENABLE_ASAN=${{ matrix.asan }} \
+            -DENABLE_TSAN=${{ matrix.tsan }} \
+            -DENABLE_UBSAN=${{ matrix.ubsan }}
+
+      - name: Build Targets
+        run: |
+          cmake --build build --target govcheck
+          cmake --build build --target govcheck_tests
+
+      - name: Run Tests
+        run: |
+          cd build && ctest --output-on-failure

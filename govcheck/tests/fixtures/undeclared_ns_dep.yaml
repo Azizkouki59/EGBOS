@@ -1,0 +1,38 @@
+schema_version: 1
+claim_id: "undeclared_ns_dep"
+namespace: "unregisteredns"
+title: "Undeclared Namespace Claim"
+text: "This claim is in an unregistered namespace."
+verification_class: "V1"
+previous_class: null
+class_rationale: "None."
+enforcement_mechanism: "None."
+enforcement_scope: "None."
+enforcement_gaps: []
+assumptions: []
+composition_dependencies:
+  - claim_id: "some_unresolved_dep"
+composed_verification_class: "V1"
+owner: "founder"
+review_authority: "founder"
+backup_owner: null
+remediation_category: null
+remediation_notes: ""
+deployment_blocking: false
+deployment_blocking_rationale: ""
+minimum_class_for_unblocked_deploy: "V1"
+rfc_references: []
+proof_artifacts: []
+review_history:
+  - date: "2026-06-19"
+    reviewer: "founder"
+    action: "created"
+    class_at_review: "V1"
+    notes: "Created."
+created_at: "2026-06-19T16:00:00Z"
+created_by: "founder"
+last_reviewed: "2026-06-19T16:00:00Z"
+review_expiry: "2027-06-19T16:00:00Z"
+status: "active"
+superseded_by: null
+amendments: []

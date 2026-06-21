@@ -11,5 +11,6 @@ option(ENABLE_TSAN  "Enable ThreadSanitizer"   OFF)
 option(ENABLE_UBSAN "Enable UBSanitizer"       OFF)
 
 # ── Subdirectories ──
+enable_testing()
 add_subdirectory(govcheck)
 add_subdirectory(engine)

@@ -120,7 +120,7 @@ std::vector<ValidationFinding> check_namespace_deps(
     }
 
     for (const auto& claim : claims) {
-        std::string claim_ns_prefix = namespace_prefix(claim.ns);
+        std::string claim_ns_prefix = namespace_prefix(claim.namespace_id);
 
         for (const auto& dep : claim.composition_dependencies) {
             // Find the dependency claim's namespace
@@ -133,14 +133,21 @@ std::vector<ValidationFinding> check_namespace_deps(
 
             for (const auto& other : claims) {
                 if (other.claim_id == dep.claim_id) {
-                    dep_ns_prefix = namespace_prefix(other.ns);
+                    dep_ns_prefix = namespace_prefix(other.namespace_id);
                     dep_found = true;
                     break;
                 }
             }
 
             if (!dep_found) {
-                // Unresolved dependency — reported by dag_builder, not here
+                auto it = deps.graph.find(claim_ns_prefix);
+                if (it == deps.graph.end()) {
+                    findings.push_back(
+                        {"GC-E-023", Severity::Error, claim.claim_id,
+                         "Claim namespace '" + claim_ns_prefix +
+                             "' is not registered in namespace-deps.yaml",
+                         claim.source_file.string(), 0});
+                }
                 continue;
             }
 
