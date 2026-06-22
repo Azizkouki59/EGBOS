@@ -177,6 +177,27 @@ TEST(ValidatorTest, SeverityToString) {
     EXPECT_EQ(to_string(static_cast<Severity>(999)), "unknown");
 }
 
+// Regression: parse_iso8601 must treat Z-suffix as UTC regardless of the
+// workstation's local timezone (GC-E-020 fix for _mkgmtime / timegm).
+TEST(ValidatorTest, ParseISO8601IsUTC) {
+    auto claim = make_mock_claim("UTC-REG-001", VerificationClass::V1);
+
+    // A well-known past UTC instant: 2020-01-01T00:00:00Z
+    // Must always be treated as expired (now > 2020).
+    claim.review_expiry = "2020-01-01T00:00:00Z";
+    auto findings = validate_expiry(claim);
+    ASSERT_EQ(findings.size(), 1u)
+        << "2020-01-01T00:00:00Z must always be expired (UTC regression)";
+    EXPECT_EQ(findings[0].code, "GC-E-020");
+
+    // A well-known future UTC instant: 2099-12-31T23:59:59Z
+    // Must never be treated as expired regardless of local timezone.
+    claim.review_expiry = "2099-12-31T23:59:59Z";
+    findings = validate_expiry(claim);
+    EXPECT_TRUE(findings.empty())
+        << "2099-12-31T23:59:59Z must never be expired (UTC regression)";
+}
+
 // Test validation for founder ownership passing explicitly (GC-E-019)
 TEST(ValidatorTest, FounderOwnerPasses) {
     auto claim = make_mock_claim("FOUNDER-001", VerificationClass::V1);

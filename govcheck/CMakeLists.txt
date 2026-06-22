@@ -25,23 +25,9 @@ FetchContent_MakeAvailable(yaml-cpp json googletest)
 find_package(OpenSSL REQUIRED)
 
 # ── Sanitizer profiles ──
-# Applied at directory scope so both govcheck and govcheck_tests are sanitized.
-# Required by S0 §7.4: all tests must pass under ASAN, TSAN, UBSAN.
-option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
-option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
-option(ENABLE_UBSAN "Enable UBSanitizer" OFF)
-if(ENABLE_ASAN)
-  add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
-  add_link_options(-fsanitize=address)
-endif()
-if(ENABLE_TSAN)
-  add_compile_options(-fsanitize=thread)
-  add_link_options(-fsanitize=thread)
-endif()
-if(ENABLE_UBSAN)
-  add_compile_options(-fsanitize=undefined)
-  add_link_options(-fsanitize=undefined)
-endif()
+# Sanitizer options (ENABLE_ASAN / ENABLE_TSAN / ENABLE_UBSAN) are declared
+# and applied in the root CMakeLists.txt so they cover every target in the
+# repository. No duplicate option() or flag application here.
 
 # ── Source files ──
 set(GOVCHECK_SOURCES

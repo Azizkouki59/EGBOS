@@ -31,19 +31,33 @@ static int vc_rank(VerificationClass vc) {
     }
 }
 
-// Parse ISO-8601 date string (YYYY-MM-DDThh:mm:ssZ) to time_t
+// Platform-correct UTC mktime: interprets struct tm as UTC, not local time.
+// Required so timestamps ending in Z are not shifted by workstation timezone.
+static std::time_t utc_mktime(std::tm* tm) {
+#if defined(_WIN32)
+    return _mkgmtime(tm);
+#else
+    return timegm(tm);
+#endif
+}
+
+// Parse ISO-8601 date string (YYYY-MM-DDThh:mm:ssZ) to time_t (UTC)
 static bool parse_iso8601(const std::string& s, std::time_t& out) {
     std::tm tm{};
     std::istringstream ss(s);
     ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
-    if (ss.fail()) {
-        // Try date-only
-        std::istringstream ss2(s);
-        ss2 >> std::get_time(&tm, "%Y-%m-%d");
-        if (ss2.fail()) return false;
+    if (!ss.fail()) {
+        tm.tm_isdst = 0;  // UTC has no DST
+        out = utc_mktime(&tm);
+        return out != -1;
     }
-    tm.tm_isdst = -1;
-    out = std::mktime(&tm);
+    // Try date-only (no time component — treat midnight UTC)
+    std::istringstream ss2(s);
+    ss2 >> std::get_time(&tm, "%Y-%m-%d");
+    if (ss2.fail()) return false;
+    tm.tm_hour = 0; tm.tm_min = 0; tm.tm_sec = 0;
+    tm.tm_isdst = 0;
+    out = utc_mktime(&tm);
     return out != -1;
 }
 
@@ -162,9 +176,13 @@ std::vector<ValidationFinding> validate_claim(
         }
     }
 
-    // Composed class validation (GC-E-017, GC-E-024)
-    auto composed_findings = validate_composed_class(claim, all_claims);
-    findings.insert(findings.end(), composed_findings.begin(), composed_findings.end());
+    // NOTE: GC-E-017 and GC-E-024 (composed class) are NOT checked here.
+    // validate_composed_class() performed a shallow direct-dep check that
+    // duplicated findings already produced by verify_composed_classes() in
+    // cmd_validate.cpp, which performs the authoritative full transitive DAG
+    // walk. Keeping both caused every composition finding to appear twice in
+    // the JSON report. The shallow check is removed; the DAG engine is sole
+    // authority for GC-E-017 / GC-E-024.
 
     // Expiry check (GC-E-020) — Warning at S0, blocking from S1
     auto expiry_findings = validate_expiry(claim);
