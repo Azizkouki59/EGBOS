@@ -451,6 +451,92 @@ static std::vector<ValidationFinding> scan_gc_wal_001(
     return findings;
 }
 
+// ── GC-E-011 — CLOCK_REALTIME in engine/ ─────────────────────────────────────
+static std::vector<ValidationFinding> scan_gc_e_011(
+    const std::filesystem::path& path,
+    const std::vector<std::string>& lines)
+{
+    std::vector<ValidationFinding> findings;
+    const auto ext = path.extension().string();
+    if (ext != ".cpp" && ext != ".cc" && ext != ".c" &&
+        ext != ".h"   && ext != ".hpp") {
+        return findings;
+    }
+    const std::string path_str = path.generic_string();
+    if (path_str.find("engine/") == std::string::npos &&
+        path_str.find("violation_GC_E_011") == std::string::npos) {
+        return findings;
+    }
+
+    static const std::regex re_clock(R"(\bCLOCK_REALTIME\b)", std::regex_constants::ECMAScript);
+
+    for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+        const std::string code = strip_cpp_comment(lines[i]);
+        if (std::regex_search(code, re_clock)) {
+            findings.push_back({
+                "GC-E-011", Severity::Error, "",
+                "CLOCK_REALTIME detected in engine/ code (GC-E-011)",
+                path.string(), i + 1
+            });
+        }
+    }
+    return findings;
+}
+
+// ── GC-E-044 — memory_order_relaxed on cross-plane atomic ────────────────────
+static std::vector<ValidationFinding> scan_gc_e_044(
+    const std::filesystem::path& path,
+    const std::vector<std::string>& lines)
+{
+    std::vector<ValidationFinding> findings;
+    const auto ext = path.extension().string();
+    if (ext != ".cpp" && ext != ".cc" && ext != ".c" &&
+        ext != ".h"   && ext != ".hpp") {
+        return findings;
+    }
+
+    static const std::regex re_relaxed(R"(\bmemory_order_relaxed\b)", std::regex_constants::ECMAScript);
+    static const std::regex re_atomic(R"(\b(x_l_|order_tag_)\b)", std::regex_constants::ECMAScript);
+
+    for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+        const std::string code = strip_cpp_comment(lines[i]);
+        if (std::regex_search(code, re_relaxed) && std::regex_search(code, re_atomic)) {
+            findings.push_back({
+                "GC-E-044", Severity::Error, "",
+                "memory_order_relaxed on cross-plane atomic (GC-E-044)",
+                path.string(), i + 1
+            });
+        }
+    }
+    return findings;
+}
+
+// ── GC-E-045 — Direct x_l_/order_tag_ read from L4/L5 ────────────────────────
+static std::vector<ValidationFinding> scan_gc_e_045(
+    const std::filesystem::path& path,
+    const std::vector<std::string>& lines)
+{
+    std::vector<ValidationFinding> findings;
+    const auto ext = path.extension().string();
+    if (ext != ".cpp" && ext != ".cc" && ext != ".c" &&
+        ext != ".h"   && ext != ".hpp") {
+        return findings;
+    }
+
+    static const std::regex re_direct_read(R"(\b(x_l_|order_tag_)\.load\s*\()", std::regex_constants::ECMAScript);
+
+    for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+        const std::string code = strip_cpp_comment(lines[i]);
+        if (std::regex_search(code, re_direct_read)) {
+            findings.push_back({
+                "GC-E-045", Severity::Error, "",
+                "Direct x_l_/order_tag_ read from L4/L5 without CROSS_PLANE_READ (GC-E-045)",
+                path.string(), i + 1
+            });
+        }
+    }
+    return findings;
+}
 
 
 }  // namespace
@@ -474,6 +560,9 @@ int cmd_scan(const std::filesystem::path& file_path)
     for (auto& f : scan_gc_e_054        (file_path, lines)) all_findings.push_back(std::move(f));
     for (auto& f : scan_gc_e_056        (file_path, lines)) all_findings.push_back(std::move(f));
     for (auto& f : scan_gc_e_secrets_001(file_path, lines)) all_findings.push_back(std::move(f));
+    for (auto& f : scan_gc_e_011        (file_path, lines)) all_findings.push_back(std::move(f));
+    for (auto& f : scan_gc_e_044        (file_path, lines)) all_findings.push_back(std::move(f));
+    for (auto& f : scan_gc_e_045        (file_path, lines)) all_findings.push_back(std::move(f));
 
     // Companion claim YAML check (GC-E-053, activated via violation_GC_E_053.cpp)
     for (auto& f : check_companion_claim_yaml(file_path)) all_findings.push_back(std::move(f));
