@@ -44,7 +44,7 @@ rfc_references: []
 proof_artifacts:
   - path: "governance/proof_artifacts/wal_kill9_test_results/run_20260714.log"
     type: "test_log"
-    sha256: "e809048196b84ad186e067e9c44a53b934ff63aa08c8a56048d81cbc421b5a93"
+    sha256: "7ccd47b4b7b79af399f143ca2451eae13b32ff9b98634fd274d6a002147a251a"
   - path: "governance/proof_artifacts/wal_kill9_test_results/tsan_run_20260714.log"
     type: "test_log"
     sha256: "045c18c04af00dbf5b8ed1659c299b2cad95fcd180311d9b2fdf75091270576b"
