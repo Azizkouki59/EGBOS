@@ -27,5 +27,7 @@ endif()
 
 # ── Subdirectories ──
 enable_testing()
+find_package(GTest REQUIRED)
+find_package(nlohmann_json REQUIRED)
 add_subdirectory(govcheck)
 add_subdirectory(engine)

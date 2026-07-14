@@ -27,14 +27,33 @@ std::vector<ValidationFinding> scan_engine_sources(const std::filesystem::path& 
         return findings;
     }
 
-    std::regex re_malloc(R"(\bmalloc\s*\()", std::regex_constants::ECMAScript);
-    std::regex re_free(R"(\bfree\s*\()", std::regex_constants::ECMAScript);
-    std::regex re_new(R"(\bnew\b)", std::regex_constants::ECMAScript);
-    std::regex re_delete(R"(\bdelete\b)", std::regex_constants::ECMAScript);
-    std::regex re_clock(R"(\bCLOCK_REALTIME\b)", std::regex_constants::ECMAScript);
+    // GC-E-010 patterns — heap allocation/deallocation in engine/ hot path.
+    // Pattern design rationale:
+    //   re_new:    \bnew\s+\w or \bnew\s*\[ — matches heap allocation expressions;
+    //              excludes "new" in comments (already stripped), string literals
+    //              (stripped below), and the word "new" used as an adjective.
+    //   re_delete: (?<!= )\bdelete\b(?!\s*=) then require operand — match heap
+    //              delete but NOT `= delete` (C++11 deleted special members).
+    //              Specifically: delete followed by whitespace+expr or '[' (array).
+    //   re_malloc / re_free: unchanged — already tight.
+    std::regex re_malloc(R"(\bmalloc\s*\()",  std::regex_constants::ECMAScript);
+    std::regex re_free  (R"(\bfree\s*\()",    std::regex_constants::ECMAScript);
+    // new <Type> or new Type[ — actual heap allocation; excludes adjective "new"
+    std::regex re_new   (R"(\bnew\s+(\w|\[))", std::regex_constants::ECMAScript);
+    // delete <expr> or delete[] — actual heap deallocation.
+    // ECMAScript std::regex has no lookbehind. Instead: match `delete` followed
+    // by a space+word or '['; then the caller checks the line does NOT contain
+    // `= delete` (C++11 deleted-function syntax). This avoids false positives on
+    // `FixedPool(const FixedPool&) = delete;` etc.
+    std::regex re_delete(R"(\bdelete\s+(\[|\w))",
+                         std::regex_constants::ECMAScript);
+    std::regex re_clock (R"(\bCLOCK_REALTIME\b)", std::regex_constants::ECMAScript);
 
     for (const auto& entry : std::filesystem::recursive_directory_iterator(engine_dir)) {
         if (!entry.is_regular_file()) continue;
+        // Exclude engine/tests — test code is exempt from hot-path rules
+        auto rel = std::filesystem::relative(entry.path(), engine_dir);
+        if (!rel.empty() && rel.begin()->string() == "tests") continue;
         auto ext = entry.path().extension();
         if (ext == ".cpp" || ext == ".h" || ext == ".cc" || ext == ".hpp") {
             std::ifstream file(entry.path());
@@ -45,13 +64,40 @@ std::vector<ValidationFinding> scan_engine_sources(const std::filesystem::path& 
             while (std::getline(file, line)) {
                 ++line_num;
 
-                // Strip single-line comments
+                // Step 1: strip single-line comments
                 auto comment_pos = line.find("//");
-                std::string code_line = (comment_pos != std::string::npos) ? line.substr(0, comment_pos) : line;
+                std::string code_line = (comment_pos != std::string::npos)
+                                            ? line.substr(0, comment_pos)
+                                            : line;
+
+                // Step 2: strip string literals to prevent false positives
+                // Replace content inside "..." with spaces (single pass, no nesting).
+                {
+                    std::string stripped;
+                    stripped.reserve(code_line.size());
+                    bool in_str = false;
+                    for (std::size_t i = 0; i < code_line.size(); ++i) {
+                        char c = code_line[i];
+                        if (!in_str && c == '"') {
+                            in_str = true;
+                            stripped += ' ';  // replace opening quote with space
+                        } else if (in_str) {
+                            if (c == '\\') {
+                                ++i;  // skip escaped char
+                            } else if (c == '"') {
+                                in_str = false;
+                            }
+                            stripped += ' ';  // replace string content with spaces
+                        } else {
+                            stripped += c;
+                        }
+                    }
+                    code_line = std::move(stripped);
+                }
 
                 if (std::regex_search(code_line, re_malloc) ||
-                    std::regex_search(code_line, re_free) ||
-                    std::regex_search(code_line, re_new) ||
+                    std::regex_search(code_line, re_free)   ||
+                    std::regex_search(code_line, re_new)    ||
                     std::regex_search(code_line, re_delete)) {
                     findings.push_back({
                         "GC-E-010",
@@ -224,9 +270,12 @@ int cmd_validate(const std::string& scope,
     all_findings.insert(all_findings.end(), engine_findings.begin(), engine_findings.end());
 
     // 7. Promote warnings to errors in strict mode
+    // GC-E-010 and GC-E-011 are activation-phase-gated (S3 and S2 respectively).
+    // They must NOT be promoted by --strict until their activation slice.
     if (strict) {
         for (auto& f : all_findings) {
-            if (f.severity == Severity::Warning) {
+            if (f.severity == Severity::Warning &&
+                f.code != "GC-E-010" && f.code != "GC-E-011") {
                 f.severity = Severity::Error;
             }
         }

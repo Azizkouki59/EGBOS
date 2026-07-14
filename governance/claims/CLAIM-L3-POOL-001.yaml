@@ -1,0 +1,65 @@
+schema_version: 1
+claim_id: "CLAIM-L3-POOL-001"
+namespace: "allocator.pool"
+title: "Pool allocator zero-heap guarantee with ASAN verification"
+text: |
+  The PoolAllocator<T, N> template provides a fixed-capacity, lock-free
+  object pool with zero heap allocation. All storage is member-resident
+  via a stack-embedded array of N slots. Capacity and alignment are
+  enforced at compile time via static_assert: N must be a power of two,
+  T must be trivially destructible, and slot alignment must satisfy
+  alignof(T). Acquire returns a non-null pointer from the freelist or
+  nullptr on exhaustion — never allocates from the heap. Release returns
+  objects to the freelist after pointer validation (bounds check against
+  the pool's address range). Double-free is detected via a debug-mode
+  bitset that tracks slot occupancy. ASAN runs produce zero malloc/new
+  originating from pool code paths. The freelist is managed via a
+  lock-free atomic stack using compare_exchange_weak with
+  acquire-on-load / release-on-store ordering.
+verification_class: "V2"
+previous_class: null
+class_rationale: "V2 — Code review evidence plus ASAN verification confirming zero malloc/new from pool paths. Not V4 because no empirical kill-9 or latency benchmark is required for the allocator itself."
+enforcement_mechanism: "ASAN build profile with zero malloc/new from pool paths; govcheck rule GC-E-010"
+enforcement_scope: "engine/core/pool_allocator.h — PoolAllocator::acquire(), PoolAllocator::release(), compile-time static_asserts, freelist management."
+enforcement_gaps:
+  - "ASAN cannot detect logic errors in freelist ordering — only memory safety violations."
+  - "V2 does not require empirical latency benchmarks; allocation latency is not verified."
+  - "Double-free detection bitset is debug-only; release builds rely on structural correctness."
+assumptions:
+  - "ASAN correctly intercepts all heap allocations (malloc, new, calloc, realloc)."
+  - "Trivially destructible types do not require destructor invocation on release."
+  - "Hardware supports lock-free compare_exchange on the target platform."
+composition_dependencies:
+  - "CLAIM-000"
+composed_verification_class: "V1"
+owner: "founder"
+review_authority: "founder"
+backup_owner: null
+remediation_category: null
+remediation_notes: ""
+deployment_blocking: true
+deployment_blocking_rationale: "Pool allocator is used on the hot path. Heap allocation in the hot path violates the zero-allocation invariant and introduces unbounded latency."
+minimum_class_for_unblocked_deploy: "V2"
+rfc_references: []
+proof_artifacts:
+  - path: "governance/proof_artifacts/pool_asan_results/run_20260714.log"
+    type: "test_log"
+    sha256: "cae927ef2ac7de079823d9bd3e62cb34cf399a4b6e5460bd6c31c1d1b86edf96"
+review_history:
+  - date: "2026-07-14"
+    reviewer: "founder"
+    action: "reviewed"
+    class_at_review: "V2"
+    notes: "ASAN verification confirms zero malloc/new from pool paths."
+  - date: "2026-06-27"
+    reviewer: "founder"
+    action: "created"
+    class_at_review: "V2"
+    notes: "Initial S1 pool allocator claim. Proof artifacts pending ASAN test execution."
+created_at: "2026-06-27T00:00:00Z"
+created_by: "founder"
+last_reviewed: "2026-06-27T00:00:00Z"
+review_expiry: "2027-06-27T00:00:00Z"
+status: "active"
+superseded_by: null
+amendments: []

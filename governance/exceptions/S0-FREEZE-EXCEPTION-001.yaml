@@ -1,0 +1,38 @@
+# governance/exceptions/S0-FREEZE-EXCEPTION-001.yaml
+# S0 Freeze Exception Record — Composite --scope Parsing
+# Pattern follows governance/claims/*.yaml schema conventions.
+schema_version: 1
+exception_id: "S0-FREEZE-EXCEPTION-001"
+title: "Composite comma-separated --scope parsing in govcheck CLI"
+status: "accepted"
+
+frozen_spec:
+  document: "S0.html"
+  section: "§4.6 — Module: commands/"
+  line: 843
+  text: "Scope Values: C0 (governance pre-check). Future: P3, P4, G1, G2, etc."
+  constraint: "Single-token scope value only"
+
+requiring_authority:
+  document: "EGBOS_MASTER_augmented.html"
+  section: "§I2 — Execution Plane Slice Registry, id=slice-S1"
+  line: 6352
+  text: "govcheck validate --scope C0,P3,P4,P5 --strict"
+  constraint: "S1 exit gate requires composite comma-separated scope"
+
+authority_resolution: "Master Blueprint (EGBOS_MASTER_augmented.html) is higher authority than S0 Implementation Specification (S0.html). Master Blueprint prevails per Evidence Authority Hierarchy."
+
+exception_boundary:
+  - "Composite comma-separated --scope parsing in govcheck/src/main.cpp only"
+  - "Scope token whitelist (C0-C4, P3-P11, G1-G4) is not expanded by this exception"
+  - "No other S0-frozen govcheck validation logic is altered"
+  - "No new subcommands added"
+  - "No behavioral change to existing C0-only validation path"
+
+remediation_id: "EGBOS-RECON-S1-001-REM-02"
+audit_reference: "docs/S1_RECONCILIATION_AUDIT.md, Item 2"
+founder_decision: "Audit Item 2, Resolution Option (a): Accept as narrow, documented exception"
+
+owner: "founder"
+created_at: "2026-07-12T00:00:00Z"
+created_by: "founder"

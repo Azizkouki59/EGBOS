@@ -1,0 +1,23 @@
+Running main() from ./googletest/src/gtest_main.cc
+[==========] Running 7 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 7 tests from PoolAllocatorTest
+[ RUN      ] PoolAllocatorTest.AllocAsanCycles
+[       OK ] PoolAllocatorTest.AllocAsanCycles (4 ms)
+[ RUN      ] PoolAllocatorTest.AllocAsanBatchCycles
+[       OK ] PoolAllocatorTest.AllocAsanBatchCycles (3 ms)
+[ RUN      ] PoolAllocatorTest.ExhaustionReturnsNullptr
+[       OK ] PoolAllocatorTest.ExhaustionReturnsNullptr (0 ms)
+[ RUN      ] PoolAllocatorTest.NoDoubleFreeReuse
+[       OK ] PoolAllocatorTest.NoDoubleFreeReuse (0 ms)
+[ RUN      ] PoolAllocatorTest.AcquiredPointersAreWithinPool
+[       OK ] PoolAllocatorTest.AcquiredPointersAreWithinPool (0 ms)
+[ RUN      ] PoolAllocatorTest.CompileTimeConstraints
+[       OK ] PoolAllocatorTest.CompileTimeConstraints (0 ms)
+[ RUN      ] PoolAllocatorTest.ZeroHeapAllocation
+[       OK ] PoolAllocatorTest.ZeroHeapAllocation (0 ms)
+[----------] 7 tests from PoolAllocatorTest (11 ms total)
+
+[----------] Global test environment tear-down
+[==========] 7 tests from 1 test suite ran. (13 ms total)
+[  PASSED  ] 7 tests.

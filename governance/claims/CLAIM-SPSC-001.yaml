@@ -1,0 +1,60 @@
+schema_version: 1
+claim_id: "CLAIM-SPSC-001"
+namespace: "ipc.spsc"
+title: "Lock-free SPSC ring buffer correctness under TSAN and cache-line isolation"
+text: |
+  The SpscRing<T, Capacity> template implements a lock-free single-producer
+  single-consumer ring buffer. Producer and consumer indices are on separate
+  cache lines (64-byte aligned) to prevent false sharing. Capacity is
+  enforced at compile time as a power of two (AD-006). The slot type must
+  be trivially copyable and default constructible (§14.2). Memory ordering
+  follows §5.2: producer reads its own head relaxed, reads tail with acquire;
+  consumer reads its own tail relaxed, reads head with acquire; head store
+  is seq_cst, tail store is release. Thread identity is asserted in DEBUG
+  builds via atomic compare_exchange on first call; concurrent access from
+  a second producer or consumer triggers assertion failure. Spin yield
+  backpressure uses _mm_pause then sched_yield after kSpscSpinYieldThreshold
+  iterations (§5.3). No heap allocation exists in any code path (GC-E-010).
+verification_class: "V4"
+previous_class: null
+class_rationale: "V4 — Empirical. Requires TSAN-clean full test suite, P99 push/pop ≤ 50 ns on target hardware, and verified cache-line isolation of producer/consumer indices."
+enforcement_mechanism: "tests/engine/spsc_ring_test (under TSAN profile); govcheck rule GC-E-010"
+enforcement_scope: "engine/core/spsc_ring.h — SpscRing::push(), SpscRing::pop(), cache-line alignment of head_/tail_, compile-time static_asserts."
+enforcement_gaps:
+  - "P99 latency measurement requires target co-location hardware; dev workstation results are indicative only."
+  - "TSAN cannot detect all possible memory ordering bugs — it provides high but not complete coverage."
+  - "Thread identity assertion is disabled in NDEBUG builds; production relies on structural single-thread guarantee."
+assumptions:
+  - "Hardware cache line size is 64 bytes on target x86_64 platform."
+  - "TSAN under GCC 13 / Clang 17 correctly models acquire/release/seq_cst semantics."
+  - "_mm_pause intrinsic is available on target x86_64 hardware."
+  - "sched_yield() is available on target Linux kernel."
+composition_dependencies:
+  - "CLAIM-000"
+composed_verification_class: "V1"
+owner: "founder"
+review_authority: "founder"
+backup_owner: null
+remediation_category: null
+remediation_notes: ""
+deployment_blocking: true
+deployment_blocking_rationale: "SPSC ring is the inter-thread communication primitive. Ordering bugs cause data corruption in the execution pipeline."
+minimum_class_for_unblocked_deploy: "V4"
+rfc_references: []
+proof_artifacts:
+  - path: "governance/proof_artifacts/spsc_tsan_results/run_20260714.log"
+    type: "test_log"
+    sha256: "f1b156e488e90e9bb1ba9fb75a469c95a2f476d2a92234c78e51d2e477745dca"
+review_history:
+  - date: "2026-06-27"
+    reviewer: "founder"
+    action: "created"
+    class_at_review: "V4"
+    notes: "Initial S1 SPSC ring buffer claim. Proof artifacts pending TSAN test execution."
+created_at: "2026-06-27T00:00:00Z"
+created_by: "founder"
+last_reviewed: "2026-06-27T00:00:00Z"
+review_expiry: "2027-06-27T00:00:00Z"
+status: "active"
+superseded_by: null
+amendments: []

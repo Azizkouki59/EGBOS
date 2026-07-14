@@ -176,6 +176,20 @@ std::vector<ValidationFinding> validate_claim(
         }
     }
 
+    // GC-E-053: V3+ claim amended without accepted RFC — blocking from S1 (C0)
+    // Spec §I7.2: "Warning From: S1 | Blocking From: S1 (immediate blocking at C0)"
+    // Rule: verification_class >= V3 AND amendments non-empty AND rfc_references empty.
+    if (vc_rank(claim.verification_class) >= 3 && !claim.amendments.empty()) {
+        if (claim.rfc_references.empty()) {
+            findings.push_back({
+                "GC-E-053", Severity::Error, claim.claim_id,
+                "V3+ claim has amendments but no rfc_references: an accepted RFC "
+                "listing this claim in artifacts_changed is required (§I7.2 GC-E-053)",
+                claim.source_file.string(), 0
+            });
+        }
+    }
+
     // NOTE: GC-E-017 and GC-E-024 (composed class) are NOT checked here.
     // validate_composed_class() performed a shallow direct-dep check that
     // duplicated findings already produced by verify_composed_classes() in

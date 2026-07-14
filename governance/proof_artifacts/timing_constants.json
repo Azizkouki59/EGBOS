@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "hardware_id": "dev-workstation-001",
+  "note": "S1 dev-workstation baseline. Production hardware measurement is S6 scope per S1_INSTITUTIONAL_SPEC.md §10 line 568. P5 gate in S1 operates against this baseline. S6 re-measurement will supersede.",
+  "measurements": {
+    "wal_fsync_p50_ns":          1952354,
+    "wal_fsync_p99_ns":          3381205,
+    "wal_fsync_p999_ns":         7574530,
+    "spsc_push_pop_p50_ns":      0,
+    "spsc_push_pop_p99_ns":      611834,
+    "nvme_write_throughput_mbps": 0
+  }
+}

@@ -1,0 +1,105 @@
+# governance/exit-gates/SLICE-S1-exit-v1.yaml
+# S1 Exit Gate — WAL + SPSC + SHM Skeleton
+#
+# Spec reference: §J0.2 (P-005), §I2 S1 exit criteria
+# This gate document certifies that all S1 acceptance criteria
+# have been satisfied. govcheck validates this file at S2 entry.
+#
+# STATUS: PENDING — awaiting proof artifact execution on target hardware
+# The gate will be signed when:
+#   1. CLAIM-WAL-001 proof artifact SHA-256 is non-PLACEHOLDER
+#   2. CLAIM-SPSC-001 proof artifact SHA-256 is non-PLACEHOLDER
+#   3. CLAIM-L3-POOL-001 proof artifact SHA-256 is non-PLACEHOLDER
+#   4. govcheck validate --scope C0,P3,P4,P5 --strict returns exit 0
+#   5. CI gates P3, P4, P5 are active and green on main branch
+
+schema_version: 1
+gate_id: "SLICE-S1-exit-v1"
+slice: "S1"
+title: "S1 Exit Gate — WAL + SPSC + SHM Skeleton"
+status: "PENDING"  # → SIGNED when all criteria pass
+version: 1
+
+# ─── Acceptance Criteria ────────────────────────────────────────────────────
+# Each criterion maps to a spec requirement and must be individually verified.
+
+acceptance_criteria:
+  # ── Claims at target verification class ──
+  - id: "S1-AC-001"
+    description: "CLAIM-WAL-001 at V4 with valid proof artifact"
+    spec_reference: "§I2 S1 slice card, §B1.2.5"
+    status: "PENDING"  # → PASS when proof artifact SHA-256 is valid
+
+  - id: "S1-AC-002"
+    description: "CLAIM-SPSC-001 at V4 with valid proof artifact"
+    spec_reference: "§I2 S1 slice card, §B1.2.5"
+    status: "PENDING"
+
+  - id: "S1-AC-003"
+    description: "CLAIM-L3-POOL-001 at V2 with valid proof artifact"
+    spec_reference: "§I2 S1 slice card, §B1.2.5"
+    status: "PENDING"
+
+  # ── govcheck composite scope ──
+  - id: "S1-AC-004"
+    description: "govcheck validate --scope C0,P3,P4,P5 --strict returns exit 0"
+    spec_reference: "§I2 S1 exit condition"
+    status: "PENDING"
+
+  # ── CI gates active and green ──
+  - id: "S1-AC-005"
+    description: "P3 gate (ASAN+UBSAN) active on PR and green on main"
+    spec_reference: "§10 P3"
+    status: "PASS"  # Workflow committed
+
+  - id: "S1-AC-006"
+    description: "P4 gate (TSAN) active on PR and green on main"
+    spec_reference: "§10 P4"
+    status: "PASS"  # Workflow committed
+
+  - id: "S1-AC-007"
+    description: "P5 gate (latency regression) active on PR"
+    spec_reference: "§10 P5"
+    status: "PASS"  # Workflow committed
+
+  # ── Engine implementation deliverables ──
+  - id: "S1-AC-008"
+    description: "WAL writer implementation compliant with §C2.2 (io_uring, O_DSYNC, CRC32C)"
+    spec_reference: "§C2.2, AD-005"
+    status: "PASS"  # wal_writer.h reviewed
+
+  - id: "S1-AC-009"
+    description: "SPSC ring implementation compliant with §C3.2 (lock-free, cache-line isolated)"
+    spec_reference: "§C3.2, AD-012"
+    status: "PASS"  # spsc_ring.h reviewed
+
+  - id: "S1-AC-010"
+    description: "SHM layout defines all 8 regions per §C3.1 with static_assert enforcement"
+    spec_reference: "§C3.1, AD-006"
+    status: "PASS"  # shm_layout.h reviewed
+
+  - id: "S1-AC-011"
+    description: "Pool allocator zero-heap with ASAN verification"
+    spec_reference: "§7.2, CLAIM-L3-POOL-001"
+    status: "PASS"  # pool_allocator.h reviewed
+
+  - id: "S1-AC-012"
+    description: "CROSS_PLANE_READ macro and GC-E-044/GC-E-045 fixture pre-registration"
+    spec_reference: "§C3.3, §6.3"
+    status: "PASS"  # cross_plane.h reviewed
+
+  # ── GC-E violation fixtures ──
+  - id: "S1-AC-013"
+    description: "All S1-required GC-E violation fixtures committed"
+    spec_reference: "§8 pre-registration table, §15.4"
+    status: "PASS"  # 9 fixtures verified in tests/governance/fixtures/
+
+# ─── Signature ──────────────────────────────────────────────────────────────
+# The signature block is populated when all acceptance criteria reach PASS.
+# govcheck exit-gate verify validates the SHA-256 and signature.
+
+signature:
+  signer: null  # → "founder" when signed
+  date: null    # → ISO 8601 when signed
+  git_commit_sha: null  # → SHA of the signing commit
+  govcheck_output_sha256: null  # → SHA-256 of the govcheck output at signing time

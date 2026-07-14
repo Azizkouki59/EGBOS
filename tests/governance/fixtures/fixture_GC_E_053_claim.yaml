@@ -1,0 +1,43 @@
+schema_version: 1
+claim_id: "FIXTURE-GC-E-053"
+namespace: "bootstrap"
+title: "GC-E-053 violation fixture — V3+ claim amended without RFC"
+text: |
+  This claim intentionally violates GC-E-053. It is at verification
+  class V3, has a non-empty amendments array, but has no RFC reference.
+  govcheck must detect this and fire GC-E-053.
+verification_class: "V3"
+previous_class: null
+class_rationale: "Test fixture — intentionally non-compliant."
+enforcement_mechanism: "none"
+enforcement_scope: "none"
+enforcement_gaps: []
+assumptions: []
+composition_dependencies: []
+composed_verification_class: "V3"
+owner: "founder"
+review_authority: "founder"
+backup_owner: null
+remediation_category: null
+remediation_notes: ""
+deployment_blocking: false
+deployment_blocking_rationale: ""
+minimum_class_for_unblocked_deploy: "V1"
+rfc_references: []
+proof_artifacts: []
+review_history:
+  - date: "2026-06-27"
+    reviewer: "founder"
+    action: "created"
+    class_at_review: "V3"
+    notes: "GC-E-053 violation fixture."
+created_at: "2026-06-27T00:00:00Z"
+created_by: "founder"
+last_reviewed: "2026-06-27T00:00:00Z"
+review_expiry: "2027-06-27T00:00:00Z"
+status: "active"
+superseded_by: null
+amendments:
+  - date: "2026-06-27"
+    description: "Amended without RFC — intentional violation"
+    amended_by: "founder"

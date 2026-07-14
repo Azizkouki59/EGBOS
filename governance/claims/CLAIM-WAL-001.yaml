@@ -1,0 +1,68 @@
+schema_version: 1
+claim_id: "CLAIM-WAL-001"
+namespace: "wal.durability"
+title: "WAL durability via O_DSYNC, CRC32C integrity, and kill-9 survival"
+text: |
+  The Write-Ahead Log guarantees that every committed record survives
+  process termination (including SIGKILL). Each record carries a CRC32C
+  header checksum computed over bytes [0, 60) of the canonical 72-byte
+  header. The WAL primary file is opened with O_DSYNC; write_sync()
+  blocks until the kernel confirms stable storage. Short writes and
+  io_uring errors are TERMINAL_HALT (P-006). Recovery scans validate
+  CRC32C and sequence monotonicity; the first failure defines the
+  truncation point. A SESSION_START record is written on clean startup;
+  its absence after the last valid record indicates unclean shutdown.
+  The WAL shadow file mirrors the primary via async pwrite (best-effort,
+  100ms lag tolerance). All timestamps use CLOCK_MONOTONIC_RAW;
+  CLOCK_REALTIME is structurally absent (GC-E-011).
+verification_class: "V4"
+previous_class: null
+class_rationale: "V4 — Empirical. Requires 10× kill-9 survival test (PROC-KILL9-001), fsync P99 ≤ 8,100 ns on target hardware, SESSION_START / clean shutdown pair verification, and CRC32C header validation on every record."
+enforcement_mechanism: "tests/engine/wal_writer_test (kill-9 harness PROC-KILL9-001); govcheck rule GC-WAL-001"
+enforcement_scope: "engine/core/wal_writer.h — WalWriter::write_sync(), WalWriter::scan_wal(), WalRecord struct layout, CRC32C computation, io_uring WRITE_FIXED path, shadow mirror."
+enforcement_gaps:
+  - "fsync P99 measurement requires target co-location NVMe hardware; dev workstation results are indicative only."
+  - "Shadow WAL lag tolerance (100ms) is not automatically verified — requires production telemetry."
+  - "kill-9 test survival count (10×) is configurable; CI enforces minimum 10 iterations."
+assumptions:
+  - "io_uring is available on the target kernel (5.1+ for IORING_OP_WRITE_FIXED)."
+  - "O_DSYNC guarantees data integrity to stable storage on the target filesystem."
+  - "CRC32C Castagnoli polynomial (0x82F63B78) is sufficient for corruption detection at WAL record sizes."
+  - "NVMe Gen4 hardware honours O_DSYNC semantics without silent data loss."
+composition_dependencies:
+  - "CLAIM-000"
+composed_verification_class: "V1"
+owner: "founder"
+review_authority: "founder"
+backup_owner: null
+remediation_category: null
+remediation_notes: ""
+deployment_blocking: true
+deployment_blocking_rationale: "WAL is the canonical definition of state transitions. Any deployment without proven WAL durability risks capital loss on process crash."
+minimum_class_for_unblocked_deploy: "V4"
+rfc_references: []
+proof_artifacts:
+  - path: "governance/proof_artifacts/wal_kill9_test_results/run_20260714.log"
+    type: "test_log"
+    sha256: "e809048196b84ad186e067e9c44a53b934ff63aa08c8a56048d81cbc421b5a93"
+  - path: "governance/proof_artifacts/wal_kill9_test_results/tsan_run_20260714.log"
+    type: "test_log"
+    sha256: "045c18c04af00dbf5b8ed1659c299b2cad95fcd180311d9b2fdf75091270576b"
+review_history:
+  - date: "2026-07-14"
+    reviewer: "founder"
+    action: "reviewed"
+    class_at_review: "V4"
+    notes: "S1 closure. PROC-KILL9-001: 10/10 trials PASS. TSAN: 9/9 tests PASS, zero races. WAL fsync P99: 3381205 ns (dev-workstation-001; production target deferred to S6 per spec §10)."
+  - date: "2026-06-27"
+    reviewer: "founder"
+    action: "created"
+    class_at_review: "V4"
+    notes: "Initial S1 WAL durability claim. Proof artifacts pending kill-9 test execution on target hardware."
+created_at: "2026-06-27T00:00:00Z"
+created_by: "founder"
+last_reviewed: "2026-06-27T00:00:00Z"
+review_expiry: "2027-06-27T00:00:00Z"
+status: "active"
+superseded_by: null
+amendments: []

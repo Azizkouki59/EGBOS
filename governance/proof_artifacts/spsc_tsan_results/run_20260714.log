@@ -1,0 +1,24 @@
+Running main() from ./googletest/src/gtest_main.cc
+[==========] Running 7 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 7 tests from SpscRingTest
+[ RUN      ] SpscRingTest.PushPopBasic
+[       OK ] SpscRingTest.PushPopBasic (1 ms)
+[ RUN      ] SpscRingTest.FullSpin
+[       OK ] SpscRingTest.FullSpin (0 ms)
+[ RUN      ] SpscRingTest.TsanRaceDetection
+[       OK ] SpscRingTest.TsanRaceDetection (0 ms)
+[ RUN      ] SpscRingTest.LatencyP99
+SPSC P99 latency: 611834 ns (measured on dev workstation)
+[       OK ] SpscRingTest.LatencyP99 (444 ms)
+[ RUN      ] SpscRingTest.CacheLineIsolation
+[       OK ] SpscRingTest.CacheLineIsolation (0 ms)
+[ RUN      ] SpscRingTest.NeverDrops
+[       OK ] SpscRingTest.NeverDrops (199 ms)
+[ RUN      ] SpscRingTest.CompileTimeConstraints
+[       OK ] SpscRingTest.CompileTimeConstraints (0 ms)
+[----------] 7 tests from SpscRingTest (650 ms total)
+
+[----------] Global test environment tear-down
+[==========] 7 tests from 1 test suite ran. (651 ms total)
+[  PASSED  ] 7 tests.

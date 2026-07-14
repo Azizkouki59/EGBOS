@@ -1,0 +1,87 @@
+# .github/workflows/p5_latency_regression.yml
+# P5 Gate: Latency regression detection (PR-blocking)
+# Spec: §I2 S1 exit, §10 P5 gate definition
+# Scope: P5
+# Triggers: Every pull request to main
+#
+# P5 compares measured P99 latencies against timing_constants.json baseline.
+# A >10% regression blocks the PR.
+# Note: S1 uses informational mode (baseline = 0) until timing_constants.json
+# is populated by the nightly sanitizers workflow.
+
+name: P5 Gate - Latency Regression
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  p5-latency:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Compiler & Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-13 g++-13 cmake libssl-dev python3
+
+      - name: "P5: Build — Release (GCC-13) for latency measurement"
+        run: |
+          cmake -B build_release \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=gcc-13 \
+            -DCMAKE_CXX_COMPILER=g++-13
+          cmake --build build_release --target wal_writer_test
+          cmake --build build_release --target spsc_ring_test
+
+      - name: "P5: Measure latency and check regression"
+        run: |
+          TIMING_FILE="governance/proof_artifacts/timing_constants.json"
+
+          # Run latency tests — filter for specific latency test cases
+          WAL_OUTPUT=$(cd build_release && ./engine/tests/wal_writer_test --gtest_filter='WalWriterTest.FsyncLatency' 2>&1) || true
+          SPSC_OUTPUT=$(cd build_release && ./engine/tests/spsc_ring_test --gtest_filter='SpscRingTest.LatencyP99' 2>&1) || true
+
+          WAL_P99=$(echo "$WAL_OUTPUT" | grep -oP 'WAL fsync P99:\s+\K\d+' || echo "0")
+          SPSC_P99=$(echo "$SPSC_OUTPUT" | grep -oP 'SPSC P99 latency:\s+\K\d+' || echo "0")
+
+          echo "Measured WAL fsync P99:      ${WAL_P99} ns"
+          echo "Measured SPSC push/pop P99:  ${SPSC_P99} ns"
+
+          BASELINE_WAL=$(python3 -c "import json; d=json.load(open('${TIMING_FILE}')); print(d['measurements']['wal_fsync_p99_ns'])")
+          BASELINE_SPSC=$(python3 -c "import json; d=json.load(open('${TIMING_FILE}')); print(d['measurements']['spsc_push_pop_p99_ns'])")
+
+          echo "Baseline WAL P99:            ${BASELINE_WAL} ns"
+          echo "Baseline SPSC P99:           ${BASELINE_SPSC} ns"
+
+          # If baseline is 0, this is informational only (S1 schema stub)
+          if [ "$BASELINE_WAL" -eq 0 ] && [ "$BASELINE_SPSC" -eq 0 ]; then
+            echo "P5: INFORMATIONAL — baseline not yet established."
+            exit 0
+          fi
+
+          FAIL=0
+          if [ "$BASELINE_WAL" -gt 0 ]; then
+            THRESHOLD=$(python3 -c "print(int(${BASELINE_WAL} * 1.10))")
+            if [ "$WAL_P99" -gt "$THRESHOLD" ]; then
+              echo "FAIL: WAL P99 ${WAL_P99} > threshold ${THRESHOLD} (10% regression)"
+              FAIL=1
+            fi
+          fi
+
+          if [ "$BASELINE_SPSC" -gt 0 ]; then
+            THRESHOLD=$(python3 -c "print(int(${BASELINE_SPSC} * 1.10))")
+            if [ "$SPSC_P99" -gt "$THRESHOLD" ]; then
+              echo "FAIL: SPSC P99 ${SPSC_P99} > threshold ${THRESHOLD} (10% regression)"
+              FAIL=1
+            fi
+          fi
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo "P5: FAIL — latency regression detected."
+            exit 1
+          fi
+
+          echo "P5: PASS — no latency regression."

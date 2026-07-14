@@ -1,0 +1,54 @@
+# .github/workflows/p3_unit_integration.yml
+# P3 Gate: ASAN + UBSAN unit and integration tests (PR-blocking)
+# Spec: §I2 S1 exit, §10 P3 gate definition
+# Scope: C0,P3
+# Triggers: Every pull request and push to main
+
+name: P3 Gate - ASAN Unit & Integration Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  p3-asan-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Compiler & Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-13 g++-13 cmake libssl-dev
+
+      - name: "P3: Build — ASAN + UBSAN (GCC-13 Debug)"
+        run: |
+          export CC=gcc-13 CXX=g++-13
+          cmake -B build_asan \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=gcc-13 \
+            -DCMAKE_CXX_COMPILER=g++-13 \
+            -DENABLE_ASAN=ON \
+            -DENABLE_UBSAN=ON
+          cmake --build build_asan --target govcheck
+          cmake --build build_asan --target govcheck_tests
+          cmake --build build_asan --target pool_allocator_test
+          cmake --build build_asan --target spsc_ring_test
+          cmake --build build_asan --target wal_writer_test
+
+      - name: "P3: Run Tests — ASAN + UBSAN"
+        run: |
+          cd build_asan && ctest --output-on-failure -V
+
+      - name: "P3: Run govcheck validate --scope C0,P3 --strict"
+        run: |
+          ./build_asan/govcheck/govcheck validate --scope C0,P3 --strict --repo-root .
+
+      - name: "P3: Generate compliance evidence"
+        run: |
+          chmod +x governance/evidence/generate_compliance_snapshot.sh
+          export EGBOS_HARDWARE_ID="github-runner-$(hostname)"
+          ./governance/evidence/generate_compliance_snapshot.sh .

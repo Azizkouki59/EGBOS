@@ -1,0 +1,30 @@
+Running main() from ./googletest/src/gtest_main.cc
+[==========] Running 9 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 9 tests from WalWriterTest
+[ RUN      ] WalWriterTest.WriteAndRead
+[       OK ] WalWriterTest.WriteAndRead (213 ms)
+[ RUN      ] WalWriterTest.TruncationOnCorrupt
+[       OK ] WalWriterTest.TruncationOnCorrupt (41 ms)
+[ RUN      ] WalWriterTest.IdempotentReplay
+[       OK ] WalWriterTest.IdempotentReplay (101 ms)
+[ RUN      ] WalWriterTest.SequenceNeverReset
+[       OK ] WalWriterTest.SequenceNeverReset (1089 ms)
+[ RUN      ] WalWriterTest.Kill9SurvivalSimulated
+[       OK ] WalWriterTest.Kill9SurvivalSimulated (1280 ms)
+[ RUN      ] WalWriterTest.FsyncLatency
+WAL fsync P50:   1952354 ns
+WAL fsync P99:   3381205 ns
+WAL fsync P99.9: 7574530 ns
+[       OK ] WalWriterTest.FsyncLatency (20834 ms)
+[ RUN      ] WalWriterTest.SessionStart
+[       OK ] WalWriterTest.SessionStart (2 ms)
+[ RUN      ] WalWriterTest.RecordStructLayout
+[       OK ] WalWriterTest.RecordStructLayout (0 ms)
+[ RUN      ] WalWriterTest.ShadowMirror
+[       OK ] WalWriterTest.ShadowMirror (45 ms)
+[----------] 9 tests from WalWriterTest (23609 ms total)
+
+[----------] Global test environment tear-down
+[==========] 9 tests from 1 test suite ran. (23609 ms total)
+[  PASSED  ] 9 tests.
