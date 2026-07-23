@@ -19,6 +19,7 @@
 #include "commands/cmd_scan.h"
 #include "commands/cmd_status.h"
 #include "commands/cmd_claims.h"
+#include "commands/cmd_deploy_gate.h"
 
 #include <filesystem>
 #include <iostream>
@@ -36,7 +37,8 @@ constexpr std::string_view kUsage =
     "    Valid: C0-C4, P3-P11, G1-G4\n"
     "  govcheck scan --file <path>\n"
     "  govcheck status [--repo-root <path>]\n"
-    "  govcheck claims [--namespace <ns>] [--status <status>] [--repo-root <path>]\n";
+    "  govcheck claims [--namespace <ns>] [--status <status>] [--repo-root <path>]\n"
+    "  govcheck deploy-gate --target <env> [--repo-root <path>]\n";
 
 void print_usage_error(const std::string& message) {
     std::cerr << "govcheck: " << message << "\n" << kUsage;
@@ -164,6 +166,20 @@ int run_claims(const std::vector<std::string>& args) {
     return egbos::govcheck::cmd_claims(filter_namespace, filter_status, repo_root);
 }
 
+int run_deploy_gate(const std::vector<std::string>& args) {
+    std::string target;
+    if (!find_flag_value(args, "--target", target) || target.empty()) {
+        print_usage_error("deploy-gate: missing required --target <env>");
+        return 3;
+    }
+
+    std::string repo_root_str = ".";
+    find_flag_value(args, "--repo-root", repo_root_str);
+    std::filesystem::path repo_root(repo_root_str);
+
+    return egbos::govcheck::cmd_deploy_gate(target, repo_root.string());
+}
+
 } // namespace
 
 #ifndef GOVCHECK_TEST_MODE
@@ -187,6 +203,9 @@ int main(int argc, char** argv) {
     }
     if (subcommand == "claims") {
         return run_claims(args);
+    }
+    if (subcommand == "deploy-gate") {
+        return run_deploy_gate(args);
     }
 
     print_usage_error("unknown subcommand '" + subcommand + "'");

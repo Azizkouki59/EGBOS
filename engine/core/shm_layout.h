@@ -40,8 +40,10 @@
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include "spsc_ring.h"
 
 // POSIX SHM / mmap / mlock / mbind headers (Linux)
 #include <fcntl.h>
@@ -103,8 +105,10 @@ inline constexpr std::size_t kPageSize         = egbos::core::kShmRegionAlignmen
 // ─────────────────────────────────────────────────────────────────────────────
 inline constexpr std::size_t kMarketEventsSlots    = 65536;
 inline constexpr std::size_t kMarketEventsSlotSize = 128;   // bytes per slot
+// SPSC Ring Header overhead requires adding ~192 bytes (3 cache lines).
+// We pad to the next page boundary (4096).
 inline constexpr std::size_t kMarketEventsRegionSize =
-    kMarketEventsSlots * kMarketEventsSlotSize;             // 8,388,608 bytes
+    ((kMarketEventsSlots * kMarketEventsSlotSize) + kPageSize) & ~(kPageSize - 1);
 inline constexpr const char* kMarketEventsPath = "/dev/shm/egbos_market_events";
 
 // AD-006: ring size must be power of 2. Bitmask modulo depends on this.
@@ -126,10 +130,15 @@ static_assert(kMarketEventsSlotSize > 0,
 //     exact per-instrument LOB layout is specified in S2 when the LOB engine is
 //     implemented. Deviation from this size requires an ADR amendment to AD-006.
 // ─────────────────────────────────────────────────────────────────────────────
-inline constexpr std::size_t kLobSnapshotPerInstrumentBytes = kPageSize; // 4096 — S2 refinement
-inline constexpr std::size_t kLobSnapshotBuffers            = 2;         // double-buffer
+// kLobSnapshotPerInstrumentBytes must be large enough to hold double buffers.
+// Each buffer is 4096 bytes (page size) to allow complex depth.
+inline constexpr std::size_t kLobSnapshotPerBufferBytes = kPageSize; // 4096
+inline constexpr std::size_t kLobSnapshotBuffers        = 2;         // double-buffer
+inline constexpr std::size_t kLobSnapshotPerInstrumentBytes = 
+    (kLobSnapshotPerBufferBytes * kLobSnapshotBuffers) + kPageSize; // Padding for active index
+    
 inline constexpr std::size_t kLobSnapshotsRegionSize =
-    kLobSnapshotBuffers * kMaxInstruments * kLobSnapshotPerInstrumentBytes;
+    kMaxInstruments * kLobSnapshotPerInstrumentBytes;
 inline constexpr const char* kLobSnapshotsPath = "/dev/shm/egbos_lob_snapshots";
 
 static_assert(kLobSnapshotsRegionSize > 0,
@@ -254,6 +263,49 @@ static_assert(kGovernanceFlagsRegionSize % kPageSize == 0,
 // region by shm_init_all(). All atomic members use the minimum required
 // memory order per the seqlock / latch protocols in spec §6.3–§6.4.
 // ─────────────────────────────────────────────────────────────────────────────
+
+#include "spsc_ring.h"
+
+// ── MarketEventsRegion ─────────────────────────────────────────────────────
+// Layout at /dev/shm/egbos_market_events.
+// Uses SpscRing which enforces alignas(64) on head and tail.
+struct MarketEventSlot {
+    alignas(128) uint8_t data[kMarketEventsSlotSize];
+};
+using MarketEventsRegion = core::SpscRing<MarketEventSlot, kMarketEventsSlots>;
+
+// ── LobSnapshotsRegion ─────────────────────────────────────────────────────
+// Layout at /dev/shm/egbos_lob_snapshots.
+// Double-buffered LOB using Seqlocks for wait-free L1 -> L2 read access.
+
+struct LobSnapshotData {
+    alignas(64) uint8_t payload[kLobSnapshotPerBufferBytes - 64]; 
+};
+
+struct LobSnapshotBuffer {
+    // Seqlock protocol for this specific buffer
+    alignas(64) std::atomic<uint64_t> sequence{0};
+    LobSnapshotData data;
+};
+
+// Ensure the header occupies exactly one page before the buffers start.
+struct alignas(kPageSize) LobSnapshotInstrumentHeader {
+    // The active buffer index (0 or 1). L2 reads from this buffer.
+    // L1 writes to the inactive buffer (active_buffer ^ 1), then flips this.
+    std::atomic<uint8_t> active_buffer{0};
+};
+
+struct LobSnapshotInstrument {
+    LobSnapshotInstrumentHeader header;
+    LobSnapshotBuffer buffers[kLobSnapshotBuffers];
+};
+
+struct LobSnapshotsRegion {
+    LobSnapshotInstrument instruments[kMaxInstruments];
+};
+
+static_assert(sizeof(LobSnapshotsRegion) <= kLobSnapshotsRegionSize,
+    "LobSnapshotsRegion exceeds allocated SHM size");
 
 // ── FeatureVectorRegion ────────────────────────────────────────────────────
 //

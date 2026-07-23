@@ -27,7 +27,36 @@ endif()
 
 # ── Subdirectories ──
 enable_testing()
-find_package(GTest REQUIRED)
-find_package(nlohmann_json REQUIRED)
+# ── Dependencies via FetchContent ──
+include(FetchContent)
+
+FetchContent_Declare(yaml-cpp
+  GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+  GIT_TAG 0.8.0
+  GIT_SHALLOW TRUE
+)
+
+FetchContent_Declare(json
+  GIT_REPOSITORY https://github.com/nlohmann/json.git
+  GIT_TAG v3.11.3
+  GIT_SHALLOW TRUE
+)
+
+FetchContent_Declare(googletest
+  GIT_REPOSITORY https://github.com/google/googletest.git
+  GIT_TAG v1.14.0
+  GIT_SHALLOW TRUE
+)
+
+FetchContent_Declare(flatbuffers
+  GIT_REPOSITORY https://github.com/google/flatbuffers.git
+  GIT_TAG v23.5.26
+  GIT_SHALLOW TRUE
+)
+
+FetchContent_MakeAvailable(yaml-cpp json googletest flatbuffers)
+
+add_subdirectory(third_party)
+add_subdirectory(schemas)
 add_subdirectory(govcheck)
 add_subdirectory(engine)

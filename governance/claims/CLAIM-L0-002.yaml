@@ -1,0 +1,36 @@
+schema_version:                1
+claim_id:                      "CLAIM-L0-002"
+namespace:                     "ingestor"
+title:                         "Feed Gap Detection and Staleness Emission"
+text:                          |
+  L0 emits GapEvent when recv_seq != expected_seq and emits FeedStaleEvent after 500ms of feed silence.
+verification_class:            "V4"
+previous_class:                null
+class_rationale:               "V4: Unit and integration tests enforce 100% path coverage for the state machine transitions."
+enforcement_mechanism:         "Unit test suite with coverage thresholds"
+enforcement_scope:             "engine/l0/ingestor.cpp state machine and timer"
+enforcement_gaps:              ["Hardware timer resolution variance"]
+assumptions:                   ["System clock monotonically advances at hardware level"]
+composition_dependencies:      []
+composed_verification_class:   "V4"
+owner:                         "founder"
+review_authority:              "founder"
+backup_owner:                  null
+remediation_category:          null
+remediation_notes:             null
+deployment_blocking:           true
+deployment_blocking_rationale: "Stale data can cause unbounded L4 risk violations if undetected."
+minimum_class_for_unblocked_deploy: "V4"
+rfc_references:                []
+proof_artifacts:
+  - path: "governance/proof_artifacts/l0_state_machine_coverage.xml"
+    type: "coverage_xml"
+    sha256: "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+review_history:                []
+created_at:                    "2026-07-16T00:00:00Z"
+created_by:                    "@founder"
+last_reviewed:                 "2026-07-16T00:00:00Z"
+review_expiry:                 "2027-07-16T00:00:00Z"
+status:                        "active"
+superseded_by:                 null
+amendments:                    []

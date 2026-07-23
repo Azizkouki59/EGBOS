@@ -1,0 +1,46 @@
+schema_version: 1
+claim_id: CLAIM-L0-001
+namespace: ingestor
+title: L0 Normalization and Tier-0 Ordering
+text: 'L0 normalizes all exchange data into RawMarketEvent via FlatBuffers to prevent
+  allocation non-determinism.
+
+  L0 strictly writes to Tier-0 logging prior to pushing data to the L1 SPSC ring to
+  guarantee data durability.
+
+  '
+verification_class: V3
+previous_class: null
+class_rationale: 'V3: AST and code review structurally verify FlatBuffers zero-allocation
+  and Tier-0 sequence ordering.'
+enforcement_mechanism: Clang AST checker and strict code review gates
+enforcement_scope: engine/l0/ingestor.cpp process_payload path
+enforcement_gaps:
+- Network kernel bypassing layer (NIC to L0 buffer)
+assumptions:
+- SPSC push never drops (CLAIM-SPSC-001)
+composition_dependencies:
+- CLAIM-SPSC-001
+composed_verification_class: V1
+owner: founder
+review_authority: founder
+backup_owner: null
+remediation_category: null
+remediation_notes: null
+deployment_blocking: true
+deployment_blocking_rationale: Data loss in Tier-0 invalidates replay fidelity for
+  all downstream systems.
+minimum_class_for_unblocked_deploy: V3
+rfc_references: []
+proof_artifacts:
+- path: governance/proof_artifacts/l0_ast_check.log
+  type: ast_log
+  sha256: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
+review_history: []
+created_at: '2026-07-16T00:00:00Z'
+created_by: '@founder'
+last_reviewed: '2026-07-16T00:00:00Z'
+review_expiry: '2027-07-16T00:00:00Z'
+status: active
+superseded_by: null
+amendments: []

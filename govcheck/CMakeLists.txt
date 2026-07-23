@@ -3,18 +3,8 @@ project(govcheck LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# ── Dependencies via FetchContent — S0.html §4.7, restored per EGBOS-RECON-S1-001-REM-01 ──
-include(FetchContent)
-FetchContent_Declare(yaml-cpp
-  GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
-  GIT_TAG 0.8.0)
-FetchContent_Declare(json
-  GIT_REPOSITORY https://github.com/nlohmann/json.git
-  GIT_TAG v3.11.3)
-FetchContent_Declare(googletest
-  GIT_REPOSITORY https://github.com/google/googletest.git
-  GIT_TAG v1.14.0)
-FetchContent_MakeAvailable(yaml-cpp json googletest)
+# ── Dependencies ──
+# third_party provides yaml-cpp, json, googletest, flatbuffers
 
 # ── OpenSSL (system — provides SHA-256 for GC-E-018) ──
 find_package(OpenSSL REQUIRED)
@@ -36,6 +26,7 @@ set(GOVCHECK_SOURCES
   src/commands/cmd_scan.cpp
   src/commands/cmd_status.cpp
   src/commands/cmd_claims.cpp
+  src/commands/cmd_deploy_gate.cpp
 )
 
 # ── Main binary ──
@@ -45,6 +36,8 @@ target_link_libraries(govcheck PRIVATE
   nlohmann_json::nlohmann_json
   OpenSSL::Crypto)
 target_include_directories(govcheck PRIVATE src/)
+
+install(TARGETS govcheck DESTINATION bin)
 
 # ── Tests ──
 enable_testing()

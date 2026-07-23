@@ -538,6 +538,70 @@ static std::vector<ValidationFinding> scan_gc_e_045(
     return findings;
 }
 
+// ── GC-E-043 — L3 state direct access ──────────────────────────────────────────
+static std::vector<ValidationFinding> scan_gc_e_043(
+    const std::filesystem::path& path,
+    const std::vector<std::string>& lines)
+{
+    std::vector<ValidationFinding> findings;
+    const auto ext = path.extension().string();
+    if (ext != ".cpp" && ext != ".cc" && ext != ".c" &&
+        ext != ".h"   && ext != ".hpp") {
+        return findings;
+    }
+
+    static const std::regex re_direct_read(R"(\b(position_|gross_exposure_)\b)", std::regex_constants::ECMAScript);
+
+    for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+        const std::string code = strip_cpp_comment(lines[i]);
+        if (std::regex_search(code, re_direct_read) && code.find("CROSS_PLANE") == std::string::npos) {
+            bool is_pos_engine = (path.filename() == "position_engine.cpp" ||
+                                  path.filename() == "position_engine.h");
+            if (!is_pos_engine) {
+                findings.push_back({
+                    "GC-E-043", Severity::Error, "",
+                    "Direct position_/gross_exposure_ access outside L3 without CROSS_PLANE_READ (GC-E-043)",
+                    path.string(), i + 1
+                });
+            }
+        }
+    }
+    return findings;
+}
+
+// ── GC-E-RESEARCH-001 — engine/ imports from research/ ───────────────────────
+static std::vector<ValidationFinding> scan_gc_e_research_001(
+    const std::filesystem::path& path,
+    const std::vector<std::string>& lines)
+{
+    std::vector<ValidationFinding> findings;
+    const auto ext = path.extension().string();
+    if (ext != ".cpp" && ext != ".cc" && ext != ".c" &&
+        ext != ".h"   && ext != ".hpp") {
+        return findings;
+    }
+    const std::string path_str = path.generic_string();
+    if (path_str.find("engine/") == std::string::npos &&
+        path_str.find("replay/") == std::string::npos &&
+        path_str.find("core/") == std::string::npos &&
+        path_str.find("violation_GC_E_RESEARCH_001") == std::string::npos) {
+        return findings;
+    }
+
+    static const std::regex re_research_include(R"(#\s*include\s*["']research/)", std::regex_constants::ECMAScript);
+
+    for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+        const std::string code = strip_cpp_comment(lines[i]);
+        if (std::regex_search(code, re_research_include)) {
+            findings.push_back({
+                "GC-E-RESEARCH-001", Severity::Error, "",
+                "engine/ core/ or replay/ imports from research/ namespace (GC-E-RESEARCH-001)",
+                path.string(), i + 1
+            });
+        }
+    }
+    return findings;
+}
 
 }  // namespace
 
@@ -563,6 +627,8 @@ int cmd_scan(const std::filesystem::path& file_path)
     for (auto& f : scan_gc_e_011        (file_path, lines)) all_findings.push_back(std::move(f));
     for (auto& f : scan_gc_e_044        (file_path, lines)) all_findings.push_back(std::move(f));
     for (auto& f : scan_gc_e_045        (file_path, lines)) all_findings.push_back(std::move(f));
+    for (auto& f : scan_gc_e_043        (file_path, lines)) all_findings.push_back(std::move(f));
+    for (auto& f : scan_gc_e_research_001(file_path, lines)) all_findings.push_back(std::move(f));
 
     // Companion claim YAML check (GC-E-053, activated via violation_GC_E_053.cpp)
     for (auto& f : check_companion_claim_yaml(file_path)) all_findings.push_back(std::move(f));

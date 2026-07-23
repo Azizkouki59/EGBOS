@@ -1,0 +1,51 @@
+// schemas/market_event.fbs
+// AD-009: FlatBuffers as exclusive schema language.
+// Tier-1 HFT Standard: Force 8-byte alignment for cache-line optimized struct packing.
+
+namespace egbos.events;
+
+enum Side : byte {
+  BUY = 0,
+  SELL = 1,
+  UNKNOWN = 2
+}
+
+enum EventType : byte {
+  NEW = 0,
+  MODIFY = 1,
+  CANCEL = 2,
+  TRADE = 3,
+  SNAPSHOT = 4,
+  GAP = 5,
+  STALE = 6
+}
+
+// Exactly 64 bytes total. Fits inside a single L2 cache line.
+// We use a FlatBuffers `struct` instead of `table` to guarantee 
+// inline contiguous memory allocation and zero vtable pointer chasing.
+struct RawMarketEvent (force_align: 8) {
+  schema_version: uint16;       // Offset: 0  (2 bytes)
+  event_type: EventType;        // Offset: 2  (1 byte)
+  side: Side;                   // Offset: 3  (1 byte)
+  feed_id: uint16;              // Offset: 4  (2 bytes)
+  exchange_id: uint16;          // Offset: 6  (2 bytes)
+  instrument_id: uint32;        // Offset: 8  (4 bytes)
+  quantity: uint32;             // Offset: 12 (4 bytes)
+  sequence_num: uint64;         // Offset: 16 (8 bytes)
+  ingestion_tsc: uint64;        // Offset: 24 (8 bytes)
+  exchange_tsc: uint64;         // Offset: 32 (8 bytes)
+  price: int64;                 // Offset: 40 (8 bytes) - fixed point PRICE_SCALE=100000
+  tier0_offset: uint64;         // Offset: 48 (8 bytes)
+  checksum: uint32;             // Offset: 56 (4 bytes)
+                                // Padding:    (4 bytes) to reach 64
+}
+
+// In FlatBuffers, the root type must be a table.
+// However, since we strictly use the struct in SHM and ring buffers,
+// we just define a dummy table if we ever need to serialize it directly to disk 
+// using FlatBuffers' file formatting. For our IPC, we memcopy the struct.
+table MarketEventLog {
+  event: RawMarketEvent;
+}
+
+root_type MarketEventLog;

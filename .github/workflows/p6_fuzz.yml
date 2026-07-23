@@ -1,0 +1,55 @@
+name: P6 — LOB Fuzz Nightly
+
+on:
+  schedule:
+    - cron: "0 2 * * *"   # 02:00 UTC nightly
+  workflow_dispatch:       # manual trigger for verification
+
+jobs:
+  lob-fuzz:
+    name: LOB libfuzzer (60s)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang + libfuzzer
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y clang libfuzzer-15-dev cmake ninja-build
+
+      - name: Build fuzz target
+        run: |
+          mkdir -p build_fuzz
+          clang++ -std=c++20 -O1 -fsanitize=fuzzer,address,undefined \
+            -I. \
+            engine/tests/test_lob_fuzz.cpp \
+            engine/l1/lob_engine.cpp \
+            -o build_fuzz/lob_fuzzer
+
+      - name: Run fuzz for 60 seconds (P6 gate)
+        run: |
+          mkdir -p governance/proof_artifacts
+          build_fuzz/lob_fuzzer \
+            -max_total_time=60 \
+            -max_len=256 \
+            -print_final_stats=1 \
+            2>&1 | tee governance/proof_artifacts/lob_fuzzer_report.log
+          echo "Exit code: $?" >> governance/proof_artifacts/lob_fuzzer_report.log
+
+      - name: Verify zero crashes
+        run: |
+          if grep -qiE 'SUMMARY: .*Sanitizer|ERROR: .*Sanitizer|crash' \
+              governance/proof_artifacts/lob_fuzzer_report.log; then
+            echo "FAIL: sanitizer or crash detected during LOB fuzz (P6 gate)"
+            exit 1
+          fi
+          echo "PASS: 60s LOB fuzz completed with zero crashes/sanitizer errors"
+
+      - name: Upload fuzz report artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lob-fuzzer-report
+          path: governance/proof_artifacts/lob_fuzzer_report.log

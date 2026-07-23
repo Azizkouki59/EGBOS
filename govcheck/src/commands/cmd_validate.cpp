@@ -49,6 +49,10 @@ std::vector<ValidationFinding> scan_engine_sources(const std::filesystem::path& 
                          std::regex_constants::ECMAScript);
     std::regex re_clock (R"(\bCLOCK_REALTIME\b)", std::regex_constants::ECMAScript);
 
+    std::regex re_x_l_tag (R"(\b(order_tag_|x_l_)\b)", std::regex_constants::ECMAScript);
+    std::regex re_relaxed (R"(\bmemory_order_relaxed\b)", std::regex_constants::ECMAScript);
+    std::regex re_research_include (R"(#\s*include\s*["']research/)", std::regex_constants::ECMAScript);
+
     for (const auto& entry : std::filesystem::recursive_directory_iterator(engine_dir)) {
         if (!entry.is_regular_file()) continue;
         // Exclude engine/tests — test code is exempt from hot-path rules
@@ -117,6 +121,37 @@ std::vector<ValidationFinding> scan_engine_sources(const std::filesystem::path& 
                         "Prohibited use of CLOCK_REALTIME in engine/",
                         entry.path().string(),
                         line_num
+                    });
+                }
+
+                if (std::regex_search(code_line, re_research_include)) {
+                    findings.push_back({
+                        "GC-E-RESEARCH-001",
+                        Severity::Error,
+                        "",
+                        "engine/ imports from research/ namespace (GC-E-RESEARCH-001)",
+                        entry.path().string(),
+                        line_num
+                    });
+                }
+
+                if (std::regex_search(code_line, re_relaxed) && code_line.find("CROSS_PLANE") != std::string::npos) {
+                    findings.push_back({
+                        "GC-E-044", Severity::Error, "",
+                        "memory_order_relaxed on cross-plane atomic",
+                        entry.path().string(), line_num
+                    });
+                }
+
+                bool is_pos_engine = (entry.path().filename() == "position_engine.cpp" ||
+                                      entry.path().filename() == "position_engine.h" ||
+                                      entry.path().filename() == "cross_plane.h");
+
+                if (!is_pos_engine && std::regex_search(code_line, re_x_l_tag)) {
+                    findings.push_back({
+                        "GC-E-045", Severity::Error, "", // GC-E-043 / GC-E-045
+                        "Direct access to order_tag_ or x_l_ outside L3 without CROSS_PLANE_READ",
+                        entry.path().string(), line_num
                     });
                 }
             }

@@ -1,0 +1,41 @@
+schema_version:                1
+claim_id:                      "CLAIM-LOB-001"
+namespace:                     "lob"
+title:                         "Limit Order Book Determinism and Zero Allocation"
+text:                          |
+  L1 uses a flat array representation with O(1) lookups via int64_t fixed-point pricing.
+  L1 executes without any dynamic memory allocation on the hot path.
+  L1 resists fuzzed poison packets without crashing for at least 60s.
+verification_class:            "V4"
+previous_class:                "V3"
+class_rationale:               "V4: Unit-tested — 3x byte-identical LOB replay against committed golden fixture (governance/proof_artifacts/golden_lob.bin SHA-256 c97b85f63d8dc5ec14d4e2c308e3596059d2304e4f535d88a4214c4c5ca4d007). GC-E-010 enforced (zero-alloc). GC-E-RESEARCH-001 active. P6 fuzz gate CI workflow committed."
+enforcement_mechanism:         "Clang AST analysis (GC-E-010, AD-004) and libfuzzer CI gate"
+enforcement_scope:             "engine/l1/lob_engine.cpp and engine/l1/lob_engine.h"
+enforcement_gaps:              ["Fuzzing corpus may not cover 100% of hypothetical malformed UDP cases"]
+assumptions:                   ["PoolAllocator is zero-allocation (CLAIM-L3-POOL-001)"]
+composition_dependencies:      ["CLAIM-L3-POOL-001"]
+composed_verification_class:   "V1"
+owner:                         "founder"
+review_authority:              "founder"
+backup_owner:                  null
+remediation_category:          null
+remediation_notes:             null
+deployment_blocking:           true
+deployment_blocking_rationale: "Dynamic allocation in LOB causes latency variance which compromises deterministic replay bounds."
+minimum_class_for_unblocked_deploy: "V3"
+rfc_references:                []
+proof_artifacts:
+  - path: "governance/proof_artifacts/golden_lob.bin"
+    type: "golden_fixture"
+    sha256: "c97b85f63d8dc5ec14d4e2c308e3596059d2304e4f535d88a4214c4c5ca4d007"
+  - path: "governance/proof_artifacts/lob_fuzzer_report.log"
+    type: "fuzzer_log"
+    sha256: "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+review_history:                []
+created_at:                    "2026-07-16T00:00:00Z"
+created_by:                    "@founder"
+last_reviewed:                 "2026-07-16T00:00:00Z"
+review_expiry:                 "2027-07-16T00:00:00Z"
+status:                        "active"
+superseded_by:                 null
+amendments:                    []

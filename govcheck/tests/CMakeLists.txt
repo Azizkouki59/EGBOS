@@ -3,7 +3,7 @@
 # This file exists to satisfy the add_subdirectory() call.
 
 # Copy test fixtures to build directory so tests can locate them at runtime
-file(GLOB FIXTURE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/*.yaml")
+file(GLOB FIXTURE_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/*.yaml")
 foreach(FIXTURE ${FIXTURE_FILES})
   get_filename_component(FIXTURE_NAME ${FIXTURE} NAME)
   configure_file(

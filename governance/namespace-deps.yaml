@@ -16,9 +16,9 @@ namespaces:
   allocator:
     allowed_dependencies: ["bootstrap"]
   ingestor:
-    allowed_dependencies: ["bootstrap"]
+    allowed_dependencies: ["bootstrap", "ipc"]
   lob:
-    allowed_dependencies: ["bootstrap", "ingestor"]
+    allowed_dependencies: ["bootstrap", "ingestor", "allocator"]
   feature:
     allowed_dependencies: ["bootstrap", "lob"]
   risk:
