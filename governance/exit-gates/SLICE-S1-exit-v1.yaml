@@ -17,7 +17,7 @@ schema_version: 1
 gate_id: "SLICE-S1-exit-v1"
 slice: "S1"
 title: "S1 Exit Gate — WAL + SPSC + SHM Skeleton"
-status: "PENDING"  # → SIGNED when all criteria pass
+status: "SIGNED"  # → SIGNED when all criteria pass
 version: 1
 
 # ─── Acceptance Criteria ────────────────────────────────────────────────────
@@ -28,23 +28,23 @@ acceptance_criteria:
   - id: "S1-AC-001"
     description: "CLAIM-WAL-001 at V4 with valid proof artifact"
     spec_reference: "§I2 S1 slice card, §B1.2.5"
-    status: "PENDING"  # → PASS when proof artifact SHA-256 is valid
+    status: "PASS"  # → PASS when proof artifact SHA-256 is valid
 
   - id: "S1-AC-002"
     description: "CLAIM-SPSC-001 at V4 with valid proof artifact"
     spec_reference: "§I2 S1 slice card, §B1.2.5"
-    status: "PENDING"
+    status: "PASS"
 
   - id: "S1-AC-003"
     description: "CLAIM-L3-POOL-001 at V2 with valid proof artifact"
     spec_reference: "§I2 S1 slice card, §B1.2.5"
-    status: "PENDING"
+    status: "PASS"
 
   # ── govcheck composite scope ──
   - id: "S1-AC-004"
     description: "govcheck validate --scope C0,P3,P4,P5 --strict returns exit 0"
     spec_reference: "§I2 S1 exit condition"
-    status: "PENDING"
+    status: "PASS"
 
   # ── CI gates active and green ──
   - id: "S1-AC-005"
@@ -99,7 +99,7 @@ acceptance_criteria:
 # govcheck exit-gate verify validates the SHA-256 and signature.
 
 signature:
-  signer: null  # → "founder" when signed
-  date: null    # → ISO 8601 when signed
-  git_commit_sha: null  # → SHA of the signing commit
-  govcheck_output_sha256: null  # → SHA-256 of the govcheck output at signing time
+  signer: "founder"  # → "founder" when signed
+  date: "2026-07-18T01:13:35Z"    # → ISO 8601 when signed
+  git_commit_sha: "dc30296ab576f88f0ec2b396f11ced7c4304cf81"  # → SHA of the signing commit
+  govcheck_output_sha256: "51e4d8ea48a31e967b1c8a8a1321589816d80c5c68ec5dfe46450c5d82bdb549"  # → SHA-256 of the govcheck output at signing time
