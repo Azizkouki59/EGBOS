@@ -1,0 +1,58 @@
+schema_version: 1
+gate_id: "SLICE-S3-exit-v1"
+slice: "S3"
+title: "S3 Exit Gate — Position Engine + L4 Risk Enforcer"
+status: "SIGNED"
+version: 1
+
+acceptance_criteria:
+  - id: "S3-AC-001"
+    description: "CLAIM-L3-001 at V4"
+    spec_reference: "§I2-S3"
+    status: "PASS"
+
+  - id: "S3-AC-002"
+    description: "CLAIM-INV-001 at V4"
+    spec_reference: "§I2-S3"
+    status: "PASS"
+
+  - id: "S3-AC-003"
+    description: "CLAIM-L3-003 at V3"
+    spec_reference: "§I2-S3"
+    status: "PASS"
+
+  - id: "S3-AC-004"
+    description: "CLAIM-L3-004 at V4"
+    spec_reference: "§I2-S3"
+    status: "PASS"
+
+  - id: "S3-AC-005"
+    description: "CLAIM-L3-006 at V4"
+    spec_reference: "§I2-S3"
+    status: "PASS"
+
+  - id: "S3-AC-006"
+    description: "CLAIM-L3-MAR-001 at V4"
+    spec_reference: "§I2-S3"
+    status: "PASS"
+
+  - id: "S3-AC-007"
+    description: "CLAIM-L4-001 at V4"
+    spec_reference: "§I2-S3"
+    status: "PASS"
+
+  - id: "S3-AC-008"
+    description: "CLAIM-RISK-STALE-001 at V1"
+    spec_reference: "§I2-S3"
+    status: "PASS"
+
+  - id: "S3-AC-009"
+    description: "govcheck validate --scope C0,P3,P4,P5,G1 --strict returns exit 0"
+    spec_reference: "§I2-S3"
+    status: "PASS"
+
+signature:
+  signer: "founder"
+  date: "2026-07-24T10:38:00Z"
+  git_commit_sha: "c26fc42035a58a7172eb56b0d53979c0c1c79c81"
+  govcheck_output_sha256: "291aef7bfebacae349cfc67b853bd09588492832cbcda4d627b39e479e5bfe9a"
