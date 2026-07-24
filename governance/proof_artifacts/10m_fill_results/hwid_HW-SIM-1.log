@@ -1,0 +1,9 @@
+# CLAIM-INV-001 proof artifact
+# Test: PositionEngineTest.PositionInvariant_10M_Fills
+# Hardware: HW-SIM-1
+# N_FILLS: 10000000
+# Expected gross_exposure_: 10000000
+# Actual gross_exposure_:   10000000
+# Elapsed: 284974 ms
+# Result: PASSED
+[  PASSED  ] PositionEngineTest.PositionInvariant_10M_Fills

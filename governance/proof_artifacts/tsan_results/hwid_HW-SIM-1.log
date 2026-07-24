@@ -1,0 +1,14 @@
+Running main() from /mnt/c/EGBOS/egbos/build/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = PositionEngineTest.ApplyFill*
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from PositionEngineTest
+[ RUN      ] PositionEngineTest.ApplyFillUpdatesGrossExposure
+[       OK ] PositionEngineTest.ApplyFillUpdatesGrossExposure (0 ms)
+[ RUN      ] PositionEngineTest.ApplyFillAccumulatesExposure
+[       OK ] PositionEngineTest.ApplyFillAccumulatesExposure (0 ms)
+[----------] 2 tests from PositionEngineTest (1 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (4 ms total)
+[  PASSED  ] 2 tests.

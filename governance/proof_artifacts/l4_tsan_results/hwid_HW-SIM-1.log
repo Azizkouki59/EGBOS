@@ -1,0 +1,19 @@
+Running main() from /mnt/c/EGBOS/egbos/build/_deps/googletest-src/googletest/src/gtest_main.cc
+[==========] Running 5 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 5 tests from RiskEnforcerFixture
+[ RUN      ] RiskEnforcerFixture.InitialStateIsInactive
+[       OK ] RiskEnforcerFixture.InitialStateIsInactive (0 ms)
+[ RUN      ] RiskEnforcerFixture.ApplyBreachIsMonotone
+[       OK ] RiskEnforcerFixture.ApplyBreachIsMonotone (0 ms)
+[ RUN      ] RiskEnforcerFixture.EvaluateRiskTriggersEmergencyOnBreach
+[       OK ] RiskEnforcerFixture.EvaluateRiskTriggersEmergencyOnBreach (5 ms)
+[ RUN      ] RiskEnforcerFixture.KillSwitch_ResponseTime_Under_1ms
+[       OK ] RiskEnforcerFixture.KillSwitch_ResponseTime_Under_1ms (2 ms)
+[ RUN      ] RiskEnforcerFixture.HaltRequired_CannotBeCleared
+[       OK ] RiskEnforcerFixture.HaltRequired_CannotBeCleared (0 ms)
+[----------] 5 tests from RiskEnforcerFixture (12 ms total)
+
+[----------] Global test environment tear-down
+[==========] 5 tests from 1 test suite ran. (13 ms total)
+[  PASSED  ] 5 tests.

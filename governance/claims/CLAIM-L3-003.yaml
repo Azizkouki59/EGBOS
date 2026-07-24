@@ -1,0 +1,49 @@
+schema_version: 1
+claim_id: CLAIM-L3-003
+namespace: engine
+title: L3 private state (order_tag_, x_l_) structurally inaccessible from outside L3
+owner: founder
+status: active
+verification_class: V3
+description: exec.state_ownership
+text: >
+  The PositionEngine fields order_tag_ and x_l_ are declared private and are
+  never returned by any public accessor. No code outside position_engine.cpp
+  may directly access these fields. GC-E-043 is a blocking govcheck rule that
+  statically detects any external reference to these field names from non-L3
+  source files, causing govcheck to exit non-zero and block CI.
+class_rationale: >
+  V3: Static enforcement via govcheck GC-E-043. The scanner detects the field
+  names order_tag_ and x_l_ in any source file that is not position_engine.h,
+  position_engine.cpp, or cross_plane.h (the L3 definition boundary). A
+  violation fixture (violation_GC_E_043.cpp) confirms the scanner fires correctly.
+  No dynamic proof artifact is required for structural encapsulation enforced
+  purely by static analysis.
+enforcement_mechanism: govcheck GC-E-043 (blocking scanner)
+enforcement_scope: engine/core/position_engine.h, engine/core/position_engine.cpp
+enforcement_gaps: []
+assumptions:
+  - govcheck is run as a required CI gate before merge
+composition_dependencies: []
+composed_verification_class: V3
+proof_artifacts:
+  - path: governance/proof_artifacts/tsan_results/hwid_HW-SIM-1.log
+    timestamp: '2026-07-24T08:49:22Z'
+    hardware_id: HW-SIM-1
+    sha256: 4f2fdc2bb7e52ed21a1eab38051f84afd210a06be7b31f19ae30600ffdaa90a2
+    type: log
+review_authority: founder
+deployment_blocking: false
+deployment_blocking_rationale: ''
+created_at: '2026-07-22T00:00:00Z'
+created_by: founder
+last_reviewed: '2026-07-24T08:49:22Z'
+review_expiry: '2027-07-24T00:00:00Z'
+backup_owner: null
+remediation_category: null
+remediation_notes: ''
+minimum_class_for_unblocked_deploy: V3
+rfc_references: []
+review_history: []
+superseded_by: null
+amendments: []

@@ -1,0 +1,51 @@
+schema_version: 1
+claim_id: CLAIM-L3-004
+namespace: engine
+title: All cross-plane atomic reads use memory_order_acquire (no relaxed permitted)
+owner: founder
+status: active
+verification_class: V4
+description: exec.memory_ordering
+text: >
+  Every cross-plane atomic read that crosses a layer boundary (e.g. L4 reading L3's
+  gross_exposure_) must use memory_order_acquire via the CROSS_PLANE_READ macro.
+  The use of memory_order_relaxed on any cross-plane atomic is blocked by GC-E-044.
+  This ensures that L4's view of L3 state is sequentially consistent with L3's
+  release stores, preventing torn reads and stale data hazards.
+class_rationale: >
+  V4: Static enforcement (GC-E-044 scanner blocks memory_order_relaxed on
+  cross-plane atomics) + dynamic proof (all fill/exposure tests run under
+  instrumented build, confirming acquire semantics are exercised). The violation
+  fixture (violation_GC_E_044.cpp) confirms the scanner correctly detects
+  relaxed ordering on cross-plane reads.
+enforcement_mechanism: govcheck GC-E-044 (blocking scanner) + CROSS_PLANE_READ macro
+enforcement_scope: engine/core/cross_plane.h, engine/core/position_engine.cpp
+enforcement_gaps: []
+assumptions:
+  - The CROSS_PLANE_READ macro is not bypassed by inlining or macro substitution
+composition_dependencies:
+  - CLAIM-L3-003
+composed_verification_class: V3
+proof_artifacts:
+  - path: governance/proof_artifacts/tsan_results/hwid_HW-SIM-1.log
+    timestamp: '2026-07-24T08:49:22Z'
+    hardware_id: HW-SIM-1
+    sha256: 4f2fdc2bb7e52ed21a1eab38051f84afd210a06be7b31f19ae30600ffdaa90a2
+    type: log
+review_authority: founder
+deployment_blocking: true
+deployment_blocking_rationale: >
+  Incorrect memory ordering on cross-plane atomics can cause L4 to act on
+  stale L3 position data, resulting in missed risk breaches.
+created_at: '2026-07-22T00:00:00Z'
+created_by: founder
+last_reviewed: '2026-07-24T08:49:22Z'
+review_expiry: '2027-07-24T00:00:00Z'
+backup_owner: null
+remediation_category: null
+remediation_notes: ''
+minimum_class_for_unblocked_deploy: V4
+rfc_references: []
+review_history: []
+superseded_by: null
+amendments: []

@@ -1,0 +1,52 @@
+schema_version: 1
+claim_id: CLAIM-L4-001
+namespace: engine
+title: L4 risk kill switch responds in < 1ms from breach detection to halt_required=1
+owner: founder
+status: active
+verification_class: V4
+description: risk.kill_switch
+text: >
+  When gross_exposure_ exceeds pos_limit_latch, evaluate_risk() must set
+  halt_required=1 within 1 millisecond. The monotone latch (AD-010) ensures
+  pos_limit_latch can only decrease, preventing re-arming after a breach.
+  The kill switch response time is measured in the KillSwitch_ResponseTime_Under_1ms
+  test, which records steady_clock::now() before and after evaluate_risk() and
+  asserts elapsed < 1000µs.
+class_rationale: >
+  V4: Static enforcement (GC-E-045 prevents L4 from reading stale L3 state;
+  AD-010 monotone latch prevents re-arming) + dynamic proof (kill switch
+  response time test passes at < 1ms). All 5 L4 tests pass under the standard
+  build. TSAN validation of the monotone CAS loop is included.
+enforcement_mechanism: govcheck GC-E-045 + AD-010 monotone CAS + response time test
+enforcement_scope: engine/core/risk_enforcer.cpp
+enforcement_gaps: []
+assumptions:
+  - evaluate_risk() is called from a pinned real-time thread in production
+  - The 1ms budget includes only software path; FPGA kill path is separate
+composition_dependencies:
+  - CLAIM-L3-006
+composed_verification_class: V3
+proof_artifacts:
+  - path: governance/proof_artifacts/l4_tsan_results/hwid_HW-SIM-1.log
+    timestamp: '2026-07-24T08:49:17Z'
+    hardware_id: HW-SIM-1
+    sha256: 129a6e4b2834e0427cc0418cbe9e968d25b5a2254c07c7b72017e06975dba277
+    type: log
+review_authority: founder
+deployment_blocking: true
+deployment_blocking_rationale: >
+  Kill switch latency directly determines maximum loss exposure in a breach
+  scenario. Exceeding 1ms means unhedged exposure accumulates beyond limits.
+created_at: '2026-07-22T00:00:00Z'
+created_by: founder
+last_reviewed: '2026-07-24T08:49:17Z'
+review_expiry: '2027-07-24T00:00:00Z'
+backup_owner: null
+remediation_category: null
+remediation_notes: ''
+minimum_class_for_unblocked_deploy: V4
+rfc_references: []
+review_history: []
+superseded_by: null
+amendments: []

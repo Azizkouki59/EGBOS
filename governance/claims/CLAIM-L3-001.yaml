@@ -1,0 +1,50 @@
+schema_version: 1
+claim_id: CLAIM-L3-001
+namespace: engine
+title: WAL-before-state ordering enforced across all position mutations (AD-012)
+owner: founder
+status: active
+verification_class: V4
+description: exec.wal_ordering
+text: >
+  Every mutation to L3 position state (apply_fill, apply_mass_cancel, sync_position)
+  writes and fsync-confirms a WAL record before any in-memory state is updated.
+  This is verified by 10x simulated kill-9 cycles: in each cycle the WAL file size
+  is measured before and after apply_fill(), confirming the record is durable prior
+  to exposure state update. AD-012 §4.6 is the governing constraint.
+class_rationale: >
+  V4: Static enforcement (GC-WAL-001 scanner in govcheck) + dynamic proof (10x
+  kill-9 simulation). The scanner blocks any source pattern where an atomic state
+  mutation precedes a WAL write in the same function scope. The kill-9 simulation
+  confirms durability at runtime by inspecting file size growth.
+enforcement_mechanism: govcheck GC-WAL-001 scanner + runtime kill-9 simulation test
+enforcement_scope: engine/core/position_engine.cpp
+enforcement_gaps: []
+assumptions:
+  - O_DSYNC semantics are correctly implemented by the kernel for the WAL file descriptor
+  - io_uring WRITE_FIXED with O_DSYNC is equivalent to fsync for WAL durability purposes
+composition_dependencies: []
+composed_verification_class: V4
+proof_artifacts:
+  - path: governance/proof_artifacts/position_kill9_results/hwid_HW-SIM-1.log
+    timestamp: '2026-07-24T08:49:12Z'
+    hardware_id: HW-SIM-1
+    sha256: 03d9f7ab70dd8bbe1e0dacb3a955a3937a8d9a571c1ca87a134912b8c48037fd
+    type: log
+review_authority: founder
+deployment_blocking: true
+deployment_blocking_rationale: >
+  WAL-before-state is a fundamental crash-recovery invariant. Any regression
+  would cause silent position corruption on restart.
+created_at: '2026-07-22T00:00:00Z'
+created_by: founder
+last_reviewed: '2026-07-24T08:49:12Z'
+review_expiry: '2027-07-24T00:00:00Z'
+backup_owner: null
+remediation_category: null
+remediation_notes: ''
+minimum_class_for_unblocked_deploy: V4
+rfc_references: []
+review_history: []
+superseded_by: null
+amendments: []

@@ -1,0 +1,52 @@
+schema_version: 1
+claim_id: CLAIM-L3-MAR-001
+namespace: engine
+title: Mass cancel writes WAL record and resets order state atomically before exposure update
+owner: founder
+status: active
+verification_class: V4
+description: exec.mass_cancel
+text: >
+  apply_mass_cancel() writes a MASS_CANCEL WAL record (fsync-confirmed via
+  O_DSYNC) before modifying order_tag_ or gross_exposure_. After mass cancel:
+  order_tag_ is reset to 0, and gross_exposure_ is updated to |position_|
+  reflecting only the net position with no open orders. The WAL record ensures
+  that a crash during mass cancel leaves the system in a recoverable state
+  consistent with the pre-cancel or post-cancel state, not an intermediate.
+class_rationale: >
+  V4: Static enforcement (GC-WAL-001 scanner, GC-E-043) + structured proof
+  artifact confirming WAL-before-state compliance and post-cancel invariant.
+  The MASS_CANCEL WAL record type is defined in WalRecordType and validates
+  against the schema. AD-012 §4.6 is the governing constraint.
+enforcement_mechanism: govcheck GC-WAL-001 + GC-E-043
+enforcement_scope: engine/core/position_engine.cpp
+enforcement_gaps: []
+assumptions:
+  - apply_mass_cancel is only called from the single WAL thread (ASSERT_WAL_THREAD)
+composition_dependencies:
+  - CLAIM-L3-001
+  - CLAIM-L3-003
+composed_verification_class: V3
+proof_artifacts:
+  - path: governance/proof_artifacts/mass_cancel_results/hwid_HW-SIM-1.log
+    timestamp: '2026-07-24T08:49:37Z'
+    hardware_id: HW-SIM-1
+    sha256: 482bee3eb5c542c488432e6439d10a912fa3daedc1d7b5724d0a589398b750f7
+    type: log
+review_authority: founder
+deployment_blocking: true
+deployment_blocking_rationale: >
+  Mass cancel is a safety operation invoked during risk breach. An incomplete
+  cancel with incorrect position state would mis-state risk exposure.
+created_at: '2026-07-22T00:00:00Z'
+created_by: founder
+last_reviewed: '2026-07-24T08:49:37Z'
+review_expiry: '2027-07-24T00:00:00Z'
+backup_owner: null
+remediation_category: null
+remediation_notes: ''
+minimum_class_for_unblocked_deploy: V4
+rfc_references: []
+review_history: []
+superseded_by: null
+amendments: []

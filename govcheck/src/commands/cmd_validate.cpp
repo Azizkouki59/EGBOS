@@ -49,7 +49,8 @@ std::vector<ValidationFinding> scan_engine_sources(const std::filesystem::path& 
                          std::regex_constants::ECMAScript);
     std::regex re_clock (R"(\bCLOCK_REALTIME\b)", std::regex_constants::ECMAScript);
 
-    std::regex re_x_l_tag (R"(\b(order_tag_|x_l_)\b)", std::regex_constants::ECMAScript);
+    std::regex re_atomic (R"(\b(order_tag_|x_l_|gross_exposure_)\b)", std::regex_constants::ECMAScript);
+    std::regex re_private_state (R"(\b(order_tag_|x_l_)\b)", std::regex_constants::ECMAScript);
     std::regex re_relaxed (R"(\bmemory_order_relaxed\b)", std::regex_constants::ECMAScript);
     std::regex re_research_include (R"(#\s*include\s*["']research/)", std::regex_constants::ECMAScript);
 
@@ -135,7 +136,7 @@ std::vector<ValidationFinding> scan_engine_sources(const std::filesystem::path& 
                     });
                 }
 
-                if (std::regex_search(code_line, re_relaxed) && code_line.find("CROSS_PLANE") != std::string::npos) {
+                if (std::regex_search(code_line, re_relaxed) && std::regex_search(code_line, re_atomic)) {
                     findings.push_back({
                         "GC-E-044", Severity::Error, "",
                         "memory_order_relaxed on cross-plane atomic",
@@ -146,13 +147,35 @@ std::vector<ValidationFinding> scan_engine_sources(const std::filesystem::path& 
                 bool is_pos_engine = (entry.path().filename() == "position_engine.cpp" ||
                                       entry.path().filename() == "position_engine.h" ||
                                       entry.path().filename() == "cross_plane.h");
+                bool is_l4_l5 = (entry.path().filename().string().find("risk_enforcer") != std::string::npos ||
+                                 entry.path().generic_string().find("/l4/") != std::string::npos ||
+                                 entry.path().generic_string().find("/l5/") != std::string::npos ||
+                                 entry.path().generic_string().find("/signal/") != std::string::npos);
 
-                if (!is_pos_engine && std::regex_search(code_line, re_x_l_tag)) {
-                    findings.push_back({
-                        "GC-E-045", Severity::Error, "", // GC-E-043 / GC-E-045
-                        "Direct access to order_tag_ or x_l_ outside L3 without CROSS_PLANE_READ",
-                        entry.path().string(), line_num
-                    });
+                std::regex re_getter(R"(\breturn\s+(order_tag_|x_l_)\s*;)", std::regex_constants::ECMAScript);
+
+                if (is_pos_engine) {
+                    if (std::regex_search(code_line, re_getter)) {
+                        findings.push_back({
+                            "GC-E-043", Severity::Error, "",
+                            "Public getter exposing protected Position Engine state (GC-E-043)",
+                            entry.path().string(), line_num
+                        });
+                    }
+                } else if (std::regex_search(code_line, re_private_state) && code_line.find("CROSS_PLANE") == std::string::npos) {
+                    if (is_l4_l5) {
+                        findings.push_back({
+                            "GC-E-045", Severity::Error, "",
+                            "Direct x_l_/order_tag_ read from L4/L5 without CROSS_PLANE_READ (GC-E-045)",
+                            entry.path().string(), line_num
+                        });
+                    } else {
+                        findings.push_back({
+                            "GC-E-043", Severity::Error, "",
+                            "Direct external access to protected Position Engine state (GC-E-043)",
+                            entry.path().string(), line_num
+                        });
+                    }
                 }
             }
         }

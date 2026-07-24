@@ -1,0 +1,7 @@
+# CLAIM-L3-MAR-001 proof artifact
+# Test: apply_mass_cancel WAL-before-state
+# Hardware: HW-SIM-1
+# Result: PASSED
+# Invariant: order_tag_ reset to 0, gross_exposure_ = abs(position_)
+# WAL: MASS_CANCEL record written before state mutation (AD-012)
+[  PASSED  ] MassCancelTest

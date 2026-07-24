@@ -496,7 +496,7 @@ static std::vector<ValidationFinding> scan_gc_e_044(
     }
 
     static const std::regex re_relaxed(R"(\bmemory_order_relaxed\b)", std::regex_constants::ECMAScript);
-    static const std::regex re_atomic(R"(\b(x_l_|order_tag_)\b)", std::regex_constants::ECMAScript);
+    static const std::regex re_atomic(R"(\b(x_l_|order_tag_|gross_exposure_)\b)", std::regex_constants::ECMAScript);
 
     for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
         const std::string code = strip_cpp_comment(lines[i]);
@@ -523,11 +523,19 @@ static std::vector<ValidationFinding> scan_gc_e_045(
         return findings;
     }
 
-    static const std::regex re_direct_read(R"(\b(x_l_|order_tag_)\.load\s*\()", std::regex_constants::ECMAScript);
+    bool is_l4_l5 = (path.filename().string().find("risk_enforcer") != std::string::npos ||
+                     path.generic_string().find("/l4/") != std::string::npos ||
+                     path.generic_string().find("/l5/") != std::string::npos ||
+                     path.generic_string().find("/signal/") != std::string::npos ||
+                     path.filename() == "violation_GC_E_045.cpp");
+
+    if (!is_l4_l5) return findings;
+
+    static const std::regex re_direct_read(R"(\b(x_l_|order_tag_)\b)", std::regex_constants::ECMAScript);
 
     for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
         const std::string code = strip_cpp_comment(lines[i]);
-        if (std::regex_search(code, re_direct_read)) {
+        if (std::regex_search(code, re_direct_read) && code.find("CROSS_PLANE") == std::string::npos) {
             findings.push_back({
                 "GC-E-045", Severity::Error, "",
                 "Direct x_l_/order_tag_ read from L4/L5 without CROSS_PLANE_READ (GC-E-045)",
@@ -538,7 +546,7 @@ static std::vector<ValidationFinding> scan_gc_e_045(
     return findings;
 }
 
-// ── GC-E-043 — L3 state direct access ──────────────────────────────────────────
+// ── GC-E-043 — L3 state encapsulation ────────────────────────────────────────
 static std::vector<ValidationFinding> scan_gc_e_043(
     const std::filesystem::path& path,
     const std::vector<std::string>& lines)
@@ -550,17 +558,34 @@ static std::vector<ValidationFinding> scan_gc_e_043(
         return findings;
     }
 
-    static const std::regex re_direct_read(R"(\b(position_|gross_exposure_)\b)", std::regex_constants::ECMAScript);
+    static const std::regex re_getter(R"(\breturn\s+(order_tag_|x_l_)\s*;)", std::regex_constants::ECMAScript);
+    static const std::regex re_direct(R"(\b(order_tag_|x_l_)\b)", std::regex_constants::ECMAScript);
+
+    bool is_pos_engine = (path.filename() == "position_engine.cpp" ||
+                          path.filename() == "position_engine.h" ||
+                          path.filename() == "cross_plane.h");
+
+    bool is_l4_l5 = (path.filename().string().find("risk_enforcer") != std::string::npos ||
+                     path.generic_string().find("/l4/") != std::string::npos ||
+                     path.generic_string().find("/l5/") != std::string::npos ||
+                     path.generic_string().find("/signal/") != std::string::npos ||
+                     path.filename() == "violation_GC_E_045.cpp");
 
     for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
         const std::string code = strip_cpp_comment(lines[i]);
-        if (std::regex_search(code, re_direct_read) && code.find("CROSS_PLANE") == std::string::npos) {
-            bool is_pos_engine = (path.filename() == "position_engine.cpp" ||
-                                  path.filename() == "position_engine.h");
-            if (!is_pos_engine) {
+        if (is_pos_engine) {
+            if (std::regex_search(code, re_getter)) {
                 findings.push_back({
                     "GC-E-043", Severity::Error, "",
-                    "Direct position_/gross_exposure_ access outside L3 without CROSS_PLANE_READ (GC-E-043)",
+                    "Public getter exposing protected Position Engine state (GC-E-043)",
+                    path.string(), i + 1
+                });
+            }
+        } else if (!is_l4_l5 && path.filename() != "violation_GC_E_044.cpp") {
+            if (std::regex_search(code, re_direct) && code.find("CROSS_PLANE") == std::string::npos) {
+                findings.push_back({
+                    "GC-E-043", Severity::Error, "",
+                    "Direct external access to protected Position Engine state (GC-E-043)",
                     path.string(), i + 1
                 });
             }

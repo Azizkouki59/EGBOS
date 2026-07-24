@@ -1,0 +1,52 @@
+schema_version: 1
+claim_id: CLAIM-L3-006
+namespace: engine
+title: gross_exposure_ is the sole cross-plane readable L3 atomic; x_l_ and order_tag_ are structurally isolated
+owner: founder
+status: active
+verification_class: V4
+description: exec.atomic_exposure
+text: >
+  L4 and L5 may only read gross_exposure_ from L3 via CROSS_PLANE_READ. Direct
+  reads of x_l_ or order_tag_ from L4/L5 code are blocked by GC-E-045. This
+  enforces the architectural contract that only the single aggregated exposure
+  value crosses the L3/L4 boundary, preventing L4 from depending on L3's internal
+  order accounting state. The violation fixture (violation_GC_E_045.cpp) confirms
+  the scanner detects direct reads of x_l_/order_tag_ from L4/L5 code.
+class_rationale: >
+  V4: Static enforcement (GC-E-045 scanner) + dynamic proof (all tests exercise
+  the CROSS_PLANE_READ macro exclusively). The scanner matches file path against
+  /l4/, /l5/, /signal/, and risk_enforcer to identify L4/L5 code, then flags
+  any reference to x_l_ or order_tag_ without CROSS_PLANE_READ.
+enforcement_mechanism: govcheck GC-E-045 (blocking scanner)
+enforcement_scope: engine/core/risk_enforcer.cpp, engine/core/risk_enforcer.h
+enforcement_gaps: []
+assumptions:
+  - L4/L5 code is organized under paths containing /l4/, /l5/, /signal/, or risk_enforcer
+composition_dependencies:
+  - CLAIM-L3-003
+  - CLAIM-L3-004
+composed_verification_class: V3
+proof_artifacts:
+  - path: governance/proof_artifacts/tsan_results/hwid_HW-SIM-1.log
+    timestamp: '2026-07-24T08:49:22Z'
+    hardware_id: HW-SIM-1
+    sha256: 4f2fdc2bb7e52ed21a1eab38051f84afd210a06be7b31f19ae30600ffdaa90a2
+    type: log
+review_authority: founder
+deployment_blocking: true
+deployment_blocking_rationale: >
+  Exposure of L3 order tracking internals to L4 violates the architectural
+  contract and could allow L4 to make risk decisions on partial order state.
+created_at: '2026-07-22T00:00:00Z'
+created_by: founder
+last_reviewed: '2026-07-24T08:49:22Z'
+review_expiry: '2027-07-24T00:00:00Z'
+backup_owner: null
+remediation_category: null
+remediation_notes: ''
+minimum_class_for_unblocked_deploy: V4
+rfc_references: []
+review_history: []
+superseded_by: null
+amendments: []

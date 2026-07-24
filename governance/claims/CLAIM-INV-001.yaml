@@ -1,0 +1,51 @@
+schema_version: 1
+claim_id: CLAIM-INV-001
+namespace: engine
+title: Position invariant holds across 10M fills (gross_exposure_ == Σ|signed_qty|)
+owner: founder
+status: active
+verification_class: V4
+description: exec.position
+text: >
+  gross_exposure_ is the monotonically-accumulated absolute quantity across all
+  fills applied to the PositionEngine. After N fills, gross_exposure_ must equal
+  the sum of |signed_qty| for every fill. This invariant is verified by executing
+  10,000,000 alternating buy/sell fills (qty=+1/-1) and confirming gross_exposure_
+  equals 10,000,000 (the sum of all absolute quantities).
+class_rationale: >
+  V4: Static enforcement (GC-E-043, govcheck prevents external state access) +
+  dynamic proof (10M fill invariant test run to completion). The 10M test exercises
+  the accumulation arithmetic exhaustively and verifies no integer overflow or
+  counter reset occurs over a typical trading session workload.
+enforcement_mechanism: govcheck GC-E-043 + 10M fill invariant test
+enforcement_scope: engine/core/position_engine.cpp
+enforcement_gaps: []
+assumptions:
+  - int64_t accumulation does not overflow for realistic trading session volumes
+  - gross_exposure_ is only written by apply_fill and apply_mass_cancel
+composition_dependencies:
+  - CLAIM-L3-001
+composed_verification_class: V4
+proof_artifacts:
+  - path: governance/proof_artifacts/10m_fill_results/hwid_HW-SIM-1.log
+    timestamp: '2026-07-24T08:49:30Z'
+    hardware_id: HW-SIM-1
+    sha256: 431ff0084c3c67545af35d6058935cf4eba0af7d444a3a48d290cf436fadf27e
+    type: log
+review_authority: founder
+deployment_blocking: true
+deployment_blocking_rationale: >
+  Position invariant is a core accounting invariant. Breach means P&L and risk
+  calculations are wrong, which is a regulatory and financial reporting failure.
+created_at: '2026-07-22T00:00:00Z'
+created_by: founder
+last_reviewed: '2026-07-24T08:49:30Z'
+review_expiry: '2027-07-24T00:00:00Z'
+backup_owner: null
+remediation_category: null
+remediation_notes: ''
+minimum_class_for_unblocked_deploy: V4
+rfc_references: []
+review_history: []
+superseded_by: null
+amendments: []
