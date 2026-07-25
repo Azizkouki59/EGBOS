@@ -1,0 +1,54 @@
+# .github/workflows/p7_staging_smoke.yml
+# P7 Gate: Staging Smoke
+# Spec: §10 P7 gate definition
+# Scope: P7
+# Triggers: main merges
+#
+# P7 executes a 60s simulator smoke test and compares P99 latency against the
+# timing_constants.json baseline. A staging deploy is blocked if P99 > 20%
+# above baseline.
+
+name: P7 Gate - Staging Smoke
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  p7-staging-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-13 g++-13 cmake libssl-dev python3
+
+      - name: "P7: Run Staging Smoke Simulator"
+        run: |
+          chmod +x scripts/run_p7_staging_smoke.sh
+          ./scripts/run_p7_staging_smoke.sh
+
+      - name: "Run govcheck validate"
+        run: |
+          # Re-build govcheck if necessary and validate scope
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target govcheck
+          ./build/govcheck/govcheck validate --scope C0,P3,P7,G1 --strict --repo-root .
+
+      - name: "Sign S4 Exit Gate"
+        run: |
+          # Requires genuine govcheck exit 0 and simulator telemetry
+          # Sign SLICE-S4-exit-v1.yaml with the commit SHA
+          GOVCHECK_SHA=$(sha256sum governance/proof_artifacts/p7_staging_smoke_results.json | awk '{print $1}')
+          sed -i "s/PENDING_CI/$GOVCHECK_SHA/g" governance/exit-gates/SLICE-S4-exit-v1.yaml
+          # Real CI environments would commit this signed gate back or deploy.
+
+      - name: Upload Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p7-smoke-results
+          path: governance/proof_artifacts/p7_staging_smoke_results.json

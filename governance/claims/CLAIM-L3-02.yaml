@@ -1,0 +1,61 @@
+schema_version: 1
+claim_id: CLAIM-L3-02
+namespace: engine
+title: FIX consumer contains zero business logic — pure translation layer
+owner: founder
+status: active
+verification_class: V3
+description: exec.fix_consumer
+text: >
+  The FIX consumer (engine/core/fix_consumer.cpp / fix_consumer.h) is a pure
+  translation layer. It maps ExecCommand struct fields to FIX 4.2 wire tags with
+  no control flow on command content. It performs no order evaluation, no risk
+  checking, no position tracking, and makes no execution decisions. All such
+  logic is exclusively in L3 (PositionEngine) and L4 (RiskEnforcer).
+  Required FIX fields SessionID, MsgSeqNum, and R_applied are set by L3 before
+  command is pushed to the SPSC ring (GC-E-042 compliance).
+class_rationale: >
+  V3: Static enforcement (GC-E-042 scanner blocks control flow in FIX consumer
+  files) + source inspection confirms zero branching on command content.
+  The violation fixture (violation_GC_E_042.cpp) confirms the scanner correctly
+  detects business logic in FIX consumer context. No dynamic test under synthetic
+  load yet (pre-live staging only); V4 upgrade deferred to S5 live qualification.
+enforcement_mechanism: govcheck GC-E-042 (blocking scanner)
+enforcement_scope: engine/core/fix_consumer.cpp, engine/core/fix_consumer.h
+enforcement_gaps: []
+assumptions:
+  - All commands arriving at the FIX consumer have been risk-checked and
+    WAL-committed by L3 before SPSC push
+  - SessionID, MsgSeqNum, and R_applied are set by L3 (structural, not checked here)
+composition_dependencies: []
+composed_verification_class: V3
+proof_artifacts:
+  - path: engine/core/fix_consumer.cpp
+    sha256: fd0b24c9f1d818733087162bd2e54a7cca82ac659957d5f284887bf84a03eac8
+    type: source
+    description: Pure translation implementation — no business logic
+  - path: engine/core/fix_consumer.h
+    sha256: 721b2c0256c9896a4ee0dd2007604895ad2baa524fcff344c74dd3f34960f367
+    type: source
+    description: FIX consumer interface contract
+  - path: tests/governance/fixtures/violation_GC_E_042.cpp
+    sha256: 36ae791a5e9daa83830adb10a4d3478f1a0fdd15ccc989a304699acd3e583087
+    type: fixture
+    description: GC-E-042 violation fixture — scanner confirmed blocking
+review_authority: founder
+deployment_blocking: true
+deployment_blocking_rationale: >
+  Any business logic in the FIX consumer could corrupt order state or bypass
+  risk enforcement by acting on command content that has not been L4-validated.
+created_at: '2026-07-24T00:00:00Z'
+created_by: founder
+last_reviewed: '2026-07-24T10:51:00Z'
+review_expiry: '2027-07-24T00:00:00Z'
+backup_owner: null
+remediation_category: null
+remediation_notes: ''
+minimum_class_for_unblocked_deploy: V3
+rfc_references: []
+review_history: []
+superseded_by: null
+amendments: []

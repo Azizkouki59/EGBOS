@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "status": "CI GENERATED PENDING",
+  "note": "Simulator execution pending. P99 latency measurement deferred to CI.",
+  "measurements": {
+    "execution_duration_s": null,
+    "p50_latency_ns": null,
+    "p95_latency_ns": null,
+    "p99_latency_ns": null,
+    "max_latency_ns": null,
+    "baseline_p99_ns": null,
+    "regression_pct": null
+  }
+}

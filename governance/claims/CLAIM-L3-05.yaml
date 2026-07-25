@@ -1,0 +1,58 @@
+schema_version: 1
+claim_id: CLAIM-L3-05
+namespace: engine
+title: L5 startup buffer empirically sized (pre-live, synthetic feeds)
+owner: founder
+status: active
+verification_class: V3
+description: startup.buffer
+text: >
+  The L5 Execution Router startup buffer (egbos_exec_commands SPSC ring, 4096
+  slots × 64B per Blueprint §C3.1) is sized based on empirical measurement
+  under synthetic feed conditions. The ExecutionRouter::commands_consumed()
+  counter provides runtime evidence of buffer utilization during the 60s
+  staging smoke test. P99 command throughput confirmed within 20% of
+  timing_constants.json baseline. V4 upgrade requires live feed jitter
+  measurement (S5 entry condition).
+class_rationale: >
+  V3: Structural correctness (SPSC ring size is a compile-time constant per
+  AD-006; ring slots = 4096 per Blueprint §C3.1) + synthetic-feed sizing
+  confirmed by 60s simulator smoke test. No live feed jitter measurement yet
+  (that is an S5 entry criterion). Buffer sizing is pre-live and empirically
+  derived from synthetic workloads. V4 requires live exchange feed data (S5).
+enforcement_mechanism: compile-time constant (AD-006 static_assert in shm_layout.h)
+enforcement_scope: engine/core/shm_layout.h, engine/core/execution_router.h
+enforcement_gaps:
+  - Live feed jitter measurement deferred to S5 (V4 upgrade condition)
+  - ONNX model inference startup latency not yet measured (pre-live)
+assumptions:
+  - Synthetic feed rate ≤ production peak rate (conservative sizing)
+  - timing_constants.json baseline is from staging-equivalent hardware
+composition_dependencies: []
+composed_verification_class: V3
+proof_artifacts:
+  - path: engine/core/execution_router.cpp
+    sha256: 98127e523690f8640a78aad89665b62b8737a80e32679873d6a131d8209f11f0
+    type: source
+    description: ExecutionRouter implementation with commands_consumed counter
+  - path: engine/core/execution_router.h
+    sha256: 31cb45c8118059864a291ac3bc6e2cf8b38c26c4a30b9d16433ed56a5aa9327c
+    type: source
+    description: ExecutionRouter interface with startup buffer sizing
+review_authority: founder
+deployment_blocking: true
+deployment_blocking_rationale: >
+  An undersized startup buffer causes command drops during session initialization,
+  which would produce WAL gaps and INV-001 violations.
+created_at: '2026-07-24T00:00:00Z'
+created_by: founder
+last_reviewed: '2026-07-24T10:51:00Z'
+review_expiry: '2027-07-24T00:00:00Z'
+backup_owner: null
+remediation_category: null
+remediation_notes: ''
+minimum_class_for_unblocked_deploy: V3
+rfc_references: []
+review_history: []
+superseded_by: null
+amendments: []

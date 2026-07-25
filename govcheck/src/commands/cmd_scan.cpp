@@ -628,6 +628,74 @@ static std::vector<ValidationFinding> scan_gc_e_research_001(
     return findings;
 }
 
+// ── GC-E-042 — Zero business logic in FIX consumer ───────────────────────────
+static std::vector<ValidationFinding> scan_gc_e_042(
+    const std::filesystem::path& path,
+    const std::vector<std::string>& lines)
+{
+    std::vector<ValidationFinding> findings;
+    const auto ext = path.extension().string();
+    if (ext != ".cpp" && ext != ".cc" && ext != ".c" &&
+        ext != ".h"   && ext != ".hpp") {
+        return findings;
+    }
+
+    const std::string filename = path.filename().string();
+    if (filename.find("fix_consumer") == std::string::npos &&
+        filename.find("violation_GC_E_042") == std::string::npos) {
+        return findings;
+    }
+
+    // Detect control flow indicative of business logic
+    static const std::regex re_logic(R"(\b(if\s*\(|switch\s*\(|while\s*\(|for\s*\())", std::regex_constants::ECMAScript);
+
+    for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+        const std::string code = strip_cpp_comment(lines[i]);
+        if (std::regex_search(code, re_logic)) {
+            findings.push_back({
+                "GC-E-042", Severity::Error, "",
+                "Business logic (control flow) detected in FIX consumer (GC-E-042)",
+                path.string(), i + 1
+            });
+        }
+    }
+    return findings;
+}
+
+// ── GC-E-RESEARCH-003 — pickle/torch.load/joblib/SavedModel in L5 ────────────
+static std::vector<ValidationFinding> scan_gc_e_research_003(
+    const std::filesystem::path& path,
+    const std::vector<std::string>& lines)
+{
+    std::vector<ValidationFinding> findings;
+    const auto ext = path.extension().string();
+    if (ext != ".cpp" && ext != ".cc" && ext != ".c" &&
+        ext != ".h"   && ext != ".hpp" && ext != ".py") {
+        return findings;
+    }
+
+    const std::string path_str = path.generic_string();
+    if (path_str.find("execution_router") == std::string::npos &&
+        path_str.find("l5") == std::string::npos &&
+        path_str.find("violation_GC_E_RESEARCH_003") == std::string::npos) {
+        return findings;
+    }
+
+    static const std::regex re_forbidden(R"(\b(pickle|torch\.load|joblib|SavedModel)\b)", std::regex_constants::ECMAScript);
+
+    for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+        const std::string code = strip_cpp_comment(lines[i]);
+        if (std::regex_search(code, re_forbidden)) {
+            findings.push_back({
+                "GC-E-RESEARCH-003", Severity::Error, "",
+                "Forbidden inference framework artifact (pickle, torch.load, joblib, SavedModel) in L5 (GC-E-RESEARCH-003)",
+                path.string(), i + 1
+            });
+        }
+    }
+    return findings;
+}
+
 }  // namespace
 
 // ── cmd_scan ──────────────────────────────────────────────────────────────────
@@ -654,6 +722,8 @@ int cmd_scan(const std::filesystem::path& file_path)
     for (auto& f : scan_gc_e_045        (file_path, lines)) all_findings.push_back(std::move(f));
     for (auto& f : scan_gc_e_043        (file_path, lines)) all_findings.push_back(std::move(f));
     for (auto& f : scan_gc_e_research_001(file_path, lines)) all_findings.push_back(std::move(f));
+    for (auto& f : scan_gc_e_042        (file_path, lines)) all_findings.push_back(std::move(f));
+    for (auto& f : scan_gc_e_research_003(file_path, lines)) all_findings.push_back(std::move(f));
 
     // Companion claim YAML check (GC-E-053, activated via violation_GC_E_053.cpp)
     for (auto& f : check_companion_claim_yaml(file_path)) all_findings.push_back(std::move(f));

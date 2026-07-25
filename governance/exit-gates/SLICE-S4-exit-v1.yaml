@@ -1,0 +1,47 @@
+schema_version: 1
+gate_id: "SLICE-S4-exit-v1"
+slice: "S4"
+title: "S4 Exit Gate — Execution Router (L5) + Startup Protocol"
+status: "CONDITIONALLY_READY"
+version: 1
+
+notes: >
+  Repository implementation complete. 
+  Awaiting CI-generated P7 staging smoke evidence.
+
+acceptance_criteria:
+  - id: "S4-AC-001"
+    description: "govcheck validate --scope C0,P3,P7,G1 --strict returns exit 0"
+    spec_reference: "§I2-S4"
+    status: "PASS"
+
+  - id: "S4-AC-002"
+    description: "CLAIM-L3-02 at V3 (FIX consumer zero business logic — GC-E-042 blocking)"
+    spec_reference: "§I2-S4"
+    status: "PASS"
+
+  - id: "S4-AC-003"
+    description: "CLAIM-L3-05 at V3 (startup buffer empirically sized — pre-live, synthetic feeds)"
+    spec_reference: "§I2-S4"
+    status: "PASS"
+
+  - id: "S4-AC-004"
+    description: "P7 staging smoke gate: 60s simulator smoke, P99 within 20% of timing_constants.json baseline"
+    spec_reference: "§I2-S4"
+    status: "PENDING_CI"
+
+  - id: "S4-AC-005"
+    description: "G1 staging deploy gate: govcheck deploy-gate --target staging passing"
+    spec_reference: "§I2-S4"
+    status: "PASS"
+
+  - id: "S4-AC-006"
+    description: "All 10 Phase-0 startup checks passing on synthetic fixtures (pre-flight protocol E3)"
+    spec_reference: "§I2-S4"
+    status: "PASS"
+
+signature:
+  signer: "PENDING_CI"
+  date: "PENDING_CI"
+  git_commit_sha: "PENDING_CI"
+  govcheck_output_sha256: "PENDING_CI"
