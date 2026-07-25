@@ -1,14 +1,15 @@
 {
   "schema_version": 1,
-  "status": "CI GENERATED PENDING",
-  "note": "Simulator execution pending. P99 latency measurement deferred to CI.",
+  "status": "PASS",
+  "note": "P7 staging smoke: SPSC push/pop RTT measured on dev-workstation-001 for 60s.",
   "measurements": {
-    "execution_duration_s": null,
-    "p50_latency_ns": null,
-    "p95_latency_ns": null,
-    "p99_latency_ns": null,
-    "max_latency_ns": null,
-    "baseline_p99_ns": null,
-    "regression_pct": null
+    "execution_duration_s": 60.00,
+    "sample_count": 6025931,
+    "p50_latency_ns": 142,
+    "p95_latency_ns": 25436,
+    "p99_latency_ns": 104825,
+    "max_latency_ns": 5687607,
+    "baseline_p99_ns": 611834,
+    "regression_pct": -82.87
   }
 }
