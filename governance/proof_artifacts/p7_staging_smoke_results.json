@@ -4,12 +4,12 @@
   "note": "P7 staging smoke: SPSC push/pop RTT measured on dev-workstation-001 for 60s.",
   "measurements": {
     "execution_duration_s": 60.00,
-    "sample_count": 6025931,
-    "p50_latency_ns": 142,
-    "p95_latency_ns": 25436,
-    "p99_latency_ns": 104825,
-    "max_latency_ns": 5687607,
+    "sample_count": 7412671,
+    "p50_latency_ns": 122,
+    "p95_latency_ns": 44286,
+    "p99_latency_ns": 119511,
+    "max_latency_ns": 7522083,
     "baseline_p99_ns": 611834,
-    "regression_pct": -82.87
+    "regression_pct": -80.47
   }
 }

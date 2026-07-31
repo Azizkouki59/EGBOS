@@ -103,7 +103,7 @@ static void consumer_fn() {
     size_t count = 0;
     size_t iters = 0;
 
-    while (!g_stop.load(std::memory_order_acquire) || !g_ring.pop(out)) {
+    while (!g_stop.load(std::memory_order_acquire)) {
         if (g_ring.pop(out)) {
             const int64_t t_pop  = now_ns();
             const int64_t t_push = static_cast<int64_t>(out.session_id);
