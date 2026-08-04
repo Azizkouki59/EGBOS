@@ -56,7 +56,6 @@ FetchContent_Declare(flatbuffers
 
 FetchContent_MakeAvailable(yaml-cpp json googletest flatbuffers)
 
-add_subdirectory(third_party)
 add_subdirectory(schemas)
 add_subdirectory(govcheck)
 add_subdirectory(engine)
