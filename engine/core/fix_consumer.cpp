@@ -21,6 +21,7 @@
 
 #include <cstdio>    // snprintf — stack-only, no heap
 #include <cstring>   // memcpy
+#include <cinttypes> // PRId64
 
 namespace egbos::l5 {
 

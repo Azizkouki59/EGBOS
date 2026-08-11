@@ -31,7 +31,7 @@ composition_dependencies: []
 composed_verification_class: V3
 proof_artifacts:
   - path: engine/core/fix_consumer.cpp
-    sha256: fd0b24c9f1d818733087162bd2e54a7cca82ac659957d5f284887bf84a03eac8
+    sha256: 0f5e865c432617a4f68dfc43eab08d6f83415c22a4b6d3d6cfb8b0ec4e00bca6
     type: source
     description: Pure translation implementation — no business logic
   - path: engine/core/fix_consumer.h

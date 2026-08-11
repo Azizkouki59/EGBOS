@@ -36,7 +36,7 @@ proof_artifacts:
     type: source
     description: ExecutionRouter implementation with commands_consumed counter
   - path: engine/core/execution_router.h
-    sha256: 31cb45c8118059864a291ac3bc6e2cf8b38c26c4a30b9d16433ed56a5aa9327c
+    sha256: e78ba5a3a0169da708422f345bc6d90736f0bffe7be3f08127b80c4bb0382360
     type: source
     description: ExecutionRouter interface with startup buffer sizing
 review_authority: founder

@@ -39,9 +39,16 @@ struct alignas(64) ExecCommand {
     int64_t  quantity;        // Fixed-point
     uint8_t  r_applied;       // R_applied flag (GC-E-042 — must be set by L3)
     uint8_t  side;            // 0=buy, 1=sell
-    uint8_t  _reserved[38];   // Pad to 64 bytes
+    uint8_t  _reserved[30];   // Pad to 64 bytes
 };
 static_assert(sizeof(ExecCommand) == 64, "ExecCommand must be exactly 64 bytes");
+
+// ── ExecCommandsRegion alias ──────────────────────────────────────────────────
+// Alias for the SPSC ring type defined in shm_layout.h, for use by L5 code.
+struct ExecCommandSlot {
+    alignas(64) uint8_t data[shm::kExecCommandsSlotSize];
+};
+using ExecCommandsRegion = egbos::core::SpscRing<ExecCommandSlot, shm::kExecCommandsSlots>;
 
 // ── ExecutionRouter ───────────────────────────────────────────────────────────
 // L5: Single-consumer reader from egbos_exec_commands SPSC.
@@ -60,7 +67,7 @@ public:
     // Construct from mapped SHM region pointers (obtained from shm_init_all).
     // Does NOT call malloc/new.
     explicit ExecutionRouter(
-        shm::ExecCommandsRegion*  exec_ring,
+        ExecCommandsRegion*  exec_ring,
         const shm::GovernanceFlags* gov_flags
     ) noexcept;
 
@@ -80,16 +87,11 @@ public:
     [[nodiscard]] bool is_halted() const noexcept;
 
 private:
-    shm::ExecCommandsRegion*    exec_ring_;
+    ExecCommandsRegion*    exec_ring_;
     const shm::GovernanceFlags* gov_flags_;
     std::atomic<uint64_t>       commands_consumed_{0};
 };
 
-// ── ExecCommandsRegion alias ──────────────────────────────────────────────────
-// Alias for the SPSC ring type defined in shm_layout.h, for use by L5 code.
-struct ExecCommandSlot {
-    alignas(64) uint8_t data[shm::kExecCommandsSlotSize];
-};
-using ExecCommandsRegion = egbos::core::SpscRing<ExecCommandSlot, shm::kExecCommandsSlots>;
+
 
 }  // namespace egbos::l5
