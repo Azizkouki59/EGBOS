@@ -13,8 +13,8 @@ enforcement_mechanism:         "Clang AST analysis (GC-E-010, AD-004) and libfuz
 enforcement_scope:             "engine/l1/lob_engine.cpp and engine/l1/lob_engine.h"
 enforcement_gaps:              ["Fuzzing corpus may not cover 100% of hypothetical malformed UDP cases"]
 assumptions:                   ["PoolAllocator is zero-allocation (CLAIM-L3-POOL-001)"]
-composition_dependencies:      ["CLAIM-L3-POOL-001"]
-composed_verification_class:   "V1"
+composition_dependencies: []
+composed_verification_class: "V4"
 owner:                         "founder"
 review_authority:              "founder"
 backup_owner:                  null

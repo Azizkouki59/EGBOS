@@ -29,9 +29,8 @@ assumptions:
   - "O_DSYNC guarantees data integrity to stable storage on the target filesystem."
   - "CRC32C Castagnoli polynomial (0x82F63B78) is sufficient for corruption detection at WAL record sizes."
   - "NVMe Gen4 hardware honours O_DSYNC semantics without silent data loss."
-composition_dependencies:
-  - "CLAIM-000"
-composed_verification_class: "V1"
+composition_dependencies: []
+composed_verification_class: "V4"
 owner: "founder"
 review_authority: "founder"
 backup_owner: null

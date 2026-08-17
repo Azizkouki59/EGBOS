@@ -21,7 +21,7 @@ assumptions:
 - SPSC push never drops (CLAIM-SPSC-001)
 composition_dependencies:
 - CLAIM-SPSC-001
-composed_verification_class: V1
+composed_verification_class: V3
 owner: founder
 review_authority: founder
 backup_owner: null

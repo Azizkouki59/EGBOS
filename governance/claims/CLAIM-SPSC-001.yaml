@@ -29,9 +29,8 @@ assumptions:
   - "TSAN under GCC 13 / Clang 17 correctly models acquire/release/seq_cst semantics."
   - "_mm_pause intrinsic is available on target x86_64 hardware."
   - "sched_yield() is available on target Linux kernel."
-composition_dependencies:
-  - "CLAIM-000"
-composed_verification_class: "V1"
+composition_dependencies: []
+composed_verification_class: "V4"
 owner: "founder"
 review_authority: "founder"
 backup_owner: null

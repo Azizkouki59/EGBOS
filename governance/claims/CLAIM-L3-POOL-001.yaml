@@ -29,9 +29,8 @@ assumptions:
   - "ASAN correctly intercepts all heap allocations (malloc, new, calloc, realloc)."
   - "Trivially destructible types do not require destructor invocation on release."
   - "Hardware supports lock-free compare_exchange on the target platform."
-composition_dependencies:
-  - "CLAIM-000"
-composed_verification_class: "V1"
+composition_dependencies: []
+composed_verification_class: "V2"
 owner: "founder"
 review_authority: "founder"
 backup_owner: null

@@ -111,3 +111,44 @@ TEST(LobDeterminismTest, CacheLineAlignment) {
     ASSERT_EQ(sizeof(egbos::l1::Top5BidsAsks), 64u);
 }
 
+// ── Collision Resolution Invariant ──────────────────────────────────────────
+TEST(LobDeterminismTest, CollisionHandling) {
+    egbos::l1::LobEngine engine(100000LL, 100LL);
+
+    // kMaxOrders is 131072.
+    // We insert two orders that map to the same slot.
+    uint64_t id1 = 1;
+    uint64_t id2 = 1 + 131072;
+    uint64_t id3 = 1 + 2 * 131072;
+
+    engine.add_order(id1, 100100, 50, true);
+    engine.add_order(id2, 100200, 30, true);
+    engine.add_order(id3, 100300, 20, true);
+
+    auto snap = engine.generate_top5_snapshot();
+    EXPECT_EQ(snap.bid_qtys[0], 20); // 100300 is best bid
+    EXPECT_EQ(snap.bid_qtys[1], 30); // 100200 is second best bid
+    EXPECT_EQ(snap.bid_qtys[2], 50); // 100100 is third best bid
+
+    // Modify id2
+    engine.modify_order(id2, 60);
+    snap = engine.generate_top5_snapshot();
+    EXPECT_EQ(snap.bid_qtys[1], 60);
+
+    // Cancel id1 (the first inserted, testing shift logic)
+    engine.cancel_order(id1);
+    snap = engine.generate_top5_snapshot();
+    EXPECT_EQ(snap.bid_qtys[0], 20); // 100300 is still there
+    EXPECT_EQ(snap.bid_qtys[1], 60); // 100200 is still there
+    EXPECT_EQ(snap.bid_qtys[2], 0);  // third bid is gone
+
+    // Cancel id3
+    engine.cancel_order(id3);
+    snap = engine.generate_top5_snapshot();
+    EXPECT_EQ(snap.bid_qtys[0], 60); // 100200 is now best bid
+
+    // Cancel id2
+    engine.cancel_order(id2);
+    snap = engine.generate_top5_snapshot();
+    EXPECT_EQ(snap.bid_qtys[0], 0); // all gone
+}

@@ -32,7 +32,7 @@ void LobEngine::link_node(int32_t price_index, OrderNode* node) noexcept {
     PriceLevel& level = price_levels_[price_index];
     node->prev = level.tail;
     node->next = nullptr;
-    
+
     if (level.tail) {
         level.tail->next = node;
     } else {
@@ -45,17 +45,22 @@ void LobEngine::link_node(int32_t price_index, OrderNode* node) noexcept {
 void LobEngine::unlink_node(OrderNode* node) noexcept {
     PriceLevel& level = price_levels_[node->price_index];
     level.total_qty -= node->qty;
-    
+
     if (node->prev) node->prev->next = node->next;
     else level.head = node->next;
-    
+
     if (node->next) node->next->prev = node->prev;
     else level.tail = node->prev;
 }
 
 void LobEngine::add_order(uint64_t order_id, int64_t price, uint32_t qty, bool is_bid) noexcept {
     uint32_t slot = order_id % kMaxOrders;
-    if (order_lookup_[slot] != nullptr) [[unlikely]] return; // Collision stub
+    uint32_t initial_slot = slot;
+    while (order_lookup_[slot] != nullptr) {
+        if (order_lookup_[slot]->order_id == order_id) [[unlikely]] return; // Duplicate order_id
+        slot = (slot + 1) % kMaxOrders;
+        if (slot == initial_slot) [[unlikely]] return; // Table full
+    }
 
     OrderNode* node = order_pool_.acquire();
     if (!node) [[unlikely]] return; // Pool exhausted (Fatal in prod)
@@ -78,8 +83,16 @@ void LobEngine::add_order(uint64_t order_id, int64_t price, uint32_t qty, bool i
 
 void LobEngine::modify_order(uint64_t order_id, uint32_t new_qty) noexcept {
     uint32_t slot = order_id % kMaxOrders;
+    uint32_t initial_slot = slot;
+    while (order_lookup_[slot] != nullptr) {
+        if (order_lookup_[slot]->order_id == order_id) {
+            break;
+        }
+        slot = (slot + 1) % kMaxOrders;
+        if (slot == initial_slot) [[unlikely]] return;
+    }
     OrderNode* node = order_lookup_[slot];
-    if (!node || node->order_id != order_id) [[unlikely]] return;
+    if (!node) [[unlikely]] return;
 
     PriceLevel& level = price_levels_[node->price_index];
     level.total_qty -= node->qty;
@@ -89,12 +102,37 @@ void LobEngine::modify_order(uint64_t order_id, uint32_t new_qty) noexcept {
 
 void LobEngine::cancel_order(uint64_t order_id) noexcept {
     uint32_t slot = order_id % kMaxOrders;
+    uint32_t initial_slot = slot;
+    while (order_lookup_[slot] != nullptr) {
+        if (order_lookup_[slot]->order_id == order_id) {
+            break;
+        }
+        slot = (slot + 1) % kMaxOrders;
+        if (slot == initial_slot) [[unlikely]] return;
+    }
     OrderNode* node = order_lookup_[slot];
-    if (!node || node->order_id != order_id) [[unlikely]] return;
+    if (!node) [[unlikely]] return;
 
     int32_t p_idx = node->price_index;
     unlink_node(node);
+
+    // Shift elements back to preserve linear probing chains
     order_lookup_[slot] = nullptr;
+    uint32_t i = (slot + 1) % kMaxOrders;
+    while (order_lookup_[i] != nullptr) {
+        OrderNode* next_node = order_lookup_[i];
+        uint32_t ideal_slot = next_node->order_id % kMaxOrders;
+        uint32_t dist_to_i = (i + kMaxOrders - ideal_slot) % kMaxOrders;
+        uint32_t dist_to_slot = (slot + kMaxOrders - ideal_slot) % kMaxOrders;
+
+        if (dist_to_slot < dist_to_i) {
+            order_lookup_[slot] = next_node;
+            order_lookup_[i] = nullptr;
+            slot = i;
+        }
+        i = (i + 1) % kMaxOrders;
+    }
+
     order_pool_.release(node);
 
     // If we removed from BBO and level became empty, update BBO
