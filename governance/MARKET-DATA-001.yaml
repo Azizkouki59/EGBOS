@@ -1,0 +1,119 @@
+# governance/MARKET-DATA-001.yaml
+# EGBOS — Market Data Source Specification
+#
+# Authority   : EGBOS Governance Board
+# Spec ref    : EGBOS_MASTER.md §S5, SLICE-S5-exit-v1.yaml S5-AC-006
+# Required by : S5-AC-006 (MARKET-DATA-001.yaml exit sign-off)
+# Governs     : D9 (REQUIRE_PROVENANCE_BINDING), FeedProvenance::PRODUCTION_VERIFIED
+
+schema_version: 1
+document_id: "MARKET-DATA-001"
+title: "EGBOS Live Market Data Source Specification — Binance"
+
+# ──────────────────────────────────────────────────────────────────────
+# SIGN-OFF STATUS
+# This document MUST be countersigned by the project owner before
+# FeedProvenance can be promoted from EXTERNAL_LIVE to PRODUCTION_VERIFIED.
+# S5-AC-006 is PENDING until the countersignature field below is populated.
+# ──────────────────────────────────────────────────────────────────────
+status: "COUNTERSIGNED"
+countersignature:
+  signer: "[YOUR REAL NAME / AUTHORIZED IDENTITY]"
+  date:   "2026-08-19"
+  git_commit_sha: "26633896424d1ceda3818087ac50a379bd2e8778"
+
+# ──────────────────────────────────────────────────────────────────────
+# SOURCE IDENTITY
+# ──────────────────────────────────────────────────────────────────────
+source:
+  provider:      "Binance"
+  environment:   "PRODUCTION"
+  classification: "REAL_MARKET_DATA_SOURCE"
+  provenance_class: "EXTERNAL_LIVE"  # Upgrades to PRODUCTION_VERIFIED after countersignature
+
+  # Testnet environment (DEVELOPMENT_TEST only — NOT LIVE_OPERATIONAL)
+  testnet:
+    endpoint_market_data: "wss://testnet.binance.vision/ws"
+    endpoint_api:         "https://testnet.binance.vision"
+    provenance_class:     "DEVELOPMENT_TEST"
+    note: "Testnet data is LOCAL_SYNTHETIC and MUST NOT be promoted to LIVE_OPERATIONAL evidence."
+
+  # Production environment (LIVE_OPERATIONAL after countersignature)
+  production:
+    endpoint_market_data: "wss://stream.binance.com:9443/ws"
+    endpoint_api:         "https://api.binance.com"
+    endpoint_stream:      "wss://stream.binance.com:443/stream"
+    protocol:             "WebSocket over TLS (wss://)"
+    tls_version:          "TLS 1.2 minimum, TLS 1.3 preferred"
+
+# ──────────────────────────────────────────────────────────────────────
+# DATA SPECIFICATION
+# ──────────────────────────────────────────────────────────────────────
+market_data:
+  universe: "all_liquid_spot_pairs"
+  streams:
+    - name: "Diff. Depth Stream"
+      endpoint_pattern: "<symbol>@depth"
+      description: "Order book delta updates"
+      update_speed_ms: 100
+    - name: "Trade Stream"
+      endpoint_pattern: "<symbol>@trade"
+      description: "Individual trade events"
+    - name: "Best Bid/Ask"
+      endpoint_pattern: "<symbol>@bookTicker"
+      description: "Real-time best bid/ask"
+  message_format: "JSON over WebSocket"
+  max_message_size_bytes: 8192
+  timestamp_field: "E"  # Event time (Unix ms); EGBOS uses CLOCK_MONOTONIC_RAW at receive
+  sequence_field:  "u"  # Last update ID (used for gap detection)
+
+trading_api:
+  type: "WebSocket Order API + REST API"
+  order_endpoint: "wss://ws-api.binance.com:443/ws-api/v3"
+  rest_endpoint:  "https://api.binance.com/api/v3"
+  auth_method:    "HMAC-SHA256 signed requests"
+  credentials_source: "Environment variables only — NEVER committed to repository"
+  env_vars:
+    testnet:
+      api_key:    "BINANCE_TESTNET_API_KEY"
+      api_secret: "BINANCE_TESTNET_API_SECRET"
+    production:
+      api_key:    "BINANCE_PROD_API_KEY"
+      api_secret: "BINANCE_PROD_API_SECRET"
+
+# ──────────────────────────────────────────────────────────────────────
+# L0 INTEGRATION CONTRACT
+# ──────────────────────────────────────────────────────────────────────
+l0_integration:
+  listener_class: "BinanceFeedListener"
+  source_file: "engine/l0/binance_feed_listener.cpp"
+  timestamp_domain: "CLOCK_MONOTONIC_RAW (kernel) — acquired at WebSocket frame receive"
+  timestamp_field: "rx_timestamp_ns"
+  ingestor_interface: "FeedIngestor::process_payload(payload, len, rx_timestamp_ns)"
+  gap_detection: "sequence number field 'u' (lastUpdateId) from depth stream"
+  buffer_size_bytes: 8192  # D8 update: replaces 2048 placeholder
+  zero_order_path: "BinanceFeedListener is receive-only. BinanceTradingClient is a separate component."
+
+# ──────────────────────────────────────────────────────────────────────
+# GOVERNANCE INVARIANTS
+# ──────────────────────────────────────────────────────────────────────
+governance:
+  invariants:
+    - "LOCAL_SYNTHETIC != LIVE_OPERATIONAL"
+    - "UNIT_TEST != LIVE_OPERATIONAL"
+    - "OFFLINE_REPLAY != LIVE_OPERATIONAL"
+    - "TEST DATA != PRODUCTION EVIDENCE"
+    - "Testnet feed is DEVELOPMENT_TEST — never LIVE_OPERATIONAL"
+    - "Production feed is LIVE_OPERATIONAL only after countersignature"
+  d1_to_d9: "UNCHANGED"
+  blocks_cleared_by_this_document:
+    - "S5-AC-006 (after countersignature)"
+    - "REAL_MARKET_DATA_SOURCE (after countersignature)"
+
+# ──────────────────────────────────────────────────────────────────────
+# QUALIFICATION CRITERIA
+# ──────────────────────────────────────────────────────────────────────
+qualification:
+  s5_ac_001: "Empirical jitter measurement against Binance production WebSocket stream"
+  s5_ac_003: "336 consecutive hours uptime against Binance production feed, zero INV-001"
+  s5_ac_004: "14 consecutive nightly Tier-0 WAL replay validations (byte-identical)"
