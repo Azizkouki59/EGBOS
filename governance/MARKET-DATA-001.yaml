@@ -18,7 +18,7 @@ title: "EGBOS Live Market Data Source Specification — Binance"
 # ──────────────────────────────────────────────────────────────────────
 status: "COUNTERSIGNED"
 countersignature:
-  signer: "[YOUR REAL NAME / AUTHORIZED IDENTITY]"
+  signer: "founder"
   date:   "2026-08-19"
   git_commit_sha: "26633896424d1ceda3818087ac50a379bd2e8778"
 
