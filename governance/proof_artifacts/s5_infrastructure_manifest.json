@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "artifact_id": "S5-INFRASTRUCTURE-MANIFEST-v1",
+  "source_revision": "2663389",
+  "collection_timestamp": "2026-08-17T03:00:00Z",
+  "classification": "LOCAL_SYNTHETIC",
+  "note": "This manifest records the evidence infrastructure built during S5 STEP 2. It does NOT constitute V4 evidence. V4 remains BLOCKED.",
+
+  "requirements": [
+    {
+      "requirement_id": "S5-REQ-001",
+      "governed_claim": "CLAIM-L3-05",
+      "governed_component": "egbos_exec_commands (L3â†’L5), kExecCommandsSlots=4096",
+      "infrastructure_available": true,
+      "infrastructure_file": "scripts/s5_exec_ring_hwm_harness.cpp",
+      "classification": "LOCAL_SYNTHETIC",
+      "what_it_proves": [
+        "SpscRing<ExecCommandSlot, 4096> (correct type and capacity) operates within HWM bounds under synthetic load",
+        "The governed ring name (egbos_exec_commands) and capacity (4096) are correctly identified",
+        "The existing s5_market_data_results.json measured the WRONG ring (65536-slot L0 ring)"
+      ],
+      "what_it_does_not_prove": [
+        "HWM of the actual /dev/shm/egbos_exec_commands production SHM region",
+        "HWM under production L3 producer load (PositionEngine â†’ ExecCommandSlot push)",
+        "HWM under live exchange feed jitter"
+      ],
+      "remaining_v4_evidence": [
+        "Run harness against /dev/shm/egbos_exec_commands with live L3 producer (LIVE_OPERATIONAL)",
+        "Observe HWM < 90% of 4096 slots under real exchange jitter",
+        "Update CLAIM-L3-05 class_rationale with correct ring capacity (4096, not 65536)",
+        "Produce LIVE_OPERATIONAL artifact signed by govcheck"
+      ],
+      "v4_satisfied": false
+    },
+
+    {
+      "requirement_id": "S5-REQ-002",
+      "governed_claim": "CLAIM-L0-002",
+      "governed_component": "engine/l0/ingestor.cpp (L0 FeedIngestor)",
+      "infrastructure_available": true,
+      "infrastructure_file": "engine/tests/test_gap_framework.cpp",
+      "classification": "LOCAL_SYNTHETIC",
+      "what_it_proves": [
+        "FeedIngestor correctly identifies missing sequence 1004 in stream [1001,1002,1003,1005]",
+        "GapEvent (0xFF marker, type=1) is emitted before the out-of-order packet",
+        "Single, multi-packet, and adjacent gaps are all detected",
+        "Identical input produces identical output (deterministic replay invariant)",
+        "No gap events are emitted for ordered sequences"
+      ],
+      "what_it_does_not_prove": [
+        "Gap detection on physical exchange feed sequence numbers",
+        "Stale detection with real hardware clock timestamps (last_recv_time_ns_ = 1 mock still present in ingestor.cpp)",
+        "PCAP provenance of observed gaps",
+        "100% accuracy against live ITCH/FIX/UDP-multicast feeds"
+      ],
+      "known_limitations": [
+        "engine/l0/ingestor.cpp:~50: last_recv_time_ns_ = 1 (mock) â€” separate remediation task required"
+      ],
+      "remaining_v4_evidence": [
+        "Fix last_recv_time_ns_ mock (separate authorized task)",
+        "Connect to real exchange feed (LIVE_OPERATIONAL)",
+        "Capture PCAP for sequence provenance",
+        "Measure gap_detection_accuracy = 100.0% on live data",
+        "Produce LIVE_OPERATIONAL artifact"
+      ],
+      "v4_satisfied": false
+    },
+
+    {
+      "requirement_id": "S5-REQ-003",
+      "governed_claim": "CLAIM-INV-001 (exec.position invariant)",
+      "governed_component": "engine/core/uptime_telemetry.h",
+      "infrastructure_available": true,
+      "infrastructure_file": "engine/core/uptime_telemetry.h",
+      "test_file": "engine/tests/test_uptime_telemetry.cpp",
+      "classification": "INFRASTRUCTURE_READY",
+      "what_it_proves": [
+        "UptimeTelemetry struct correctly records start/stop/elapsed monotonic time",
+        "inv001_violations counter increments atomically and blocks trial_complete()",
+        "watchdog_ticks counter increments atomically",
+        "health_state transitions correctly on violation and watchdog expiry",
+        "Persistence via NDJSON append works on Linux",
+        "kTargetTrialNs correctly represents 336 hours in nanoseconds"
+      ],
+      "what_it_does_not_prove": [
+        "336 hours of continuous process uptime",
+        "Zero INV-001 violations over a 14-day window",
+        "Any operational trial has been started or completed"
+      ],
+      "remaining_v4_evidence": [
+        "Execute 336-hour live operational trial",
+        "Maintain zero inv001_violations throughout",
+        "Persist telemetry NDJSON log for the full trial duration",
+        "Produce LIVE_OPERATIONAL artifact signed by govcheck at trial conclusion"
+      ],
+      "explicit_statement": "INFRASTRUCTURE_READY â€” 336H TRIAL NOT EXECUTED",
+      "v4_satisfied": false
+    },
+
+    {
+      "requirement_id": "S5-REQ-004",
+      "governed_claim": "CLAIM-WAL-001 / PROC-REPLAY-001",
+      "governed_component": "engine/core/wal_writer.h (WalWriter::scan_wal)",
+      "infrastructure_available": true,
+      "infrastructure_file": "engine/tests/test_replay_comparison.cpp",
+      "classification": "OFFLINE_REPLAY",
+      "what_it_proves": [
+        "Three independent scan_wal() invocations on identical WAL produce byte-identical ReplayState",
+        "State hash (valid_records + last_valid_sequence + truncation_byte_offset) is stable across replays",
+        "Single-byte WAL corruption causes state hash divergence (negative test)",
+        "Corrupted WAL produces fewer valid_records than the golden reference",
+        "Empty WAL replay returns zero records (boundary condition)"
+      ],
+      "what_it_does_not_prove": [
+        "14 consecutive nightly production replay runs",
+        "Byte-identical replay against a live Tier-0 WAL captured during trading",
+        "Replay across machine reboots or kernel upgrades"
+      ],
+      "remaining_v4_evidence": [
+        "Configure nightly CI to run scan_wal() against previous night's Tier-0 WAL",
+        "Record 14 consecutive PASSED results",
+        "Produce OFFLINE_REPLAY artifacts for each night, signed by govcheck"
+      ],
+      "explicit_statement": "DETERMINISTIC_REPLAY_INFRASTRUCTURE_READY â€” 14 NIGHT RUN NOT EXECUTED",
+      "v4_satisfied": false
+    },
+
+    {
+      "requirement_id": "S5-REQ-005",
+      "governed_claim": "None (no claim currently governs zero-order-path enforcement)",
+      "governed_component": "engine/l0/live_feed_listener.cpp",
+      "infrastructure_available": true,
+      "infrastructure_file": "engine/tests/test_zero_order_path.cpp",
+      "classification": "APPLICATION_RX_ONLY",
+      "what_it_proves": [
+        "FeedIngestor::process_payload() produces no outbound socket event under normal conditions",
+        "FeedIngestor::process_payload() produces no outbound socket event on gap detection",
+        "FIX consumer (fix_consumer.cpp) is not linked into the L0 receive test binary",
+        "UDP loopback recv() succeeds from a bound RX socket (Linux)"
+      ],
+      "what_it_does_not_prove": [
+        "OS-level prohibition of outbound traffic from the market-data process",
+        "Network namespace isolation",
+        "iptables/nftables OUTPUT DROP policy",
+        "seccomp DENY for sendto/send/sendmsg",
+        "CAP_NET_RAW restriction",
+        "Production VLAN segregation"
+      ],
+      "enforcement_gap": "APPLICATION_RX_ONLY only â€” ARCHITECTURALLY_ENFORCED not implemented",
+      "remaining_v4_evidence": [
+        "Implement at least one of: network-ns isolation, iptables policy, seccomp, capability restriction",
+        "Produce ARCHITECTURAL_ENFORCEMENT artifact proving enforcement survives process execution",
+        "Alternatively: document production network topology proving L3 isolation"
+      ],
+      "v4_satisfied": false
+    }
+  ],
+
+  "overall_v4_status": "BLOCKED",
+  "overall_classification": "LOCAL_SYNTHETIC",
+  "claim_promotion_status": {
+    "CLAIM-L3-05": "NOT_PROMOTED â€” verification_class remains V3",
+    "CLAIM-L0-002": "NOT_PROMOTED â€” verification_class remains V3"
+  },
+  "synthetic_to_live_promotion": false,
+  "ingestor_cpp_modified": false,
+  "note_ingestor": "engine/l0/ingestor.cpp last_recv_time_ns_ = 1 mock was intentionally kept out of scope. Separate authorized task required."
+}

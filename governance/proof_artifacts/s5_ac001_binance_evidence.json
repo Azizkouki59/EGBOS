@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "spec_ref": "S5-REQ-001",
+  "evidence_class": "EXTERNAL_LIVE_DISQUALIFIED_ENV",
+  "environment_class": "WSL2_DISQUALIFIED",
+  "source": "Binance",
+  "endpoint": "wss://stream.binance.com:9443",
+  "provenance": "EXTERNAL_LIVE",
+  "started_at": "2026-08-29T14:54:22Z",
+  "ended_at": "2026-08-29T14:55:28Z",
+  "duration_ns": 65534466419,
+  "frames_received": 0,
+  "timestamp_source": "CLOCK_MONOTONIC_RAW",
+  "min_inter_frame_ns": 0,
+  "max_inter_frame_ns": 0,
+  "mean_inter_frame_ns": 0,
+  "jitter_ns": 0,
+  "connection_success": true,
+  "kernel_release": "6.6.87.2-microsoft-standard-WSL2",
+  "tier0_disqualified": true,
+  "disqualification_reason": "Host is WSL2: lacks isolcpus/nohz_full Tier-0 kernel parameters"
+}

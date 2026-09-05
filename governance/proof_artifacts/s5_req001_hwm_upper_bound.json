@@ -1,0 +1,30 @@
+{
+  "artifact_id": "S5-REQ-001-EXEC-RING-HWM-v1",
+  "requirement_id": "S5-REQ-001",
+  "classification": "LOCAL_SYNTHETIC",
+  "governed_component": "CLAIM-L3-05",
+  "ring_name": "egbos_exec_commands",
+  "ring_capacity_slots": 4096,
+  "total_pushes": 119989,
+  "total_pops": 119989,
+  "total_lazy_refreshes": 29,
+  "theoretical_min_refreshes": 29,
+  "allowed_max_refreshes": 30.45,
+  "refresh_ratio": 1.0000,
+  "methodology": "In-process SpscRing<ExecCommandSlot,4096> replica; not /dev/shm production region",
+  "collection_timestamp": "2026-08-18T23:36:21Z",
+  "source_revision": "2663389",
+  "environment": "dev-workstation-001",
+  "executable": "s5_exec_ring_hwm_harness",
+  "execution_duration_s": 60,
+  "output_sha256": "PENDING_GOVCHECK_SIGN",
+  "pass_criteria": {
+    "P_ring_lazy_refresh_limit": { "result": true, "value": 29 }
+  },
+  "limitations": [
+    "LOCAL_SYNTHETIC: in-process ring only; not attached to /dev/shm/egbos_exec_commands",
+    "V4 promotion requires LIVE_OPERATIONAL evidence from production L3 producer",
+    "CLAIM-L3-05 remains blocked at V3"
+  ],
+  "v4_satisfied": false
+}
