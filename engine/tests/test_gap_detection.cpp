@@ -44,13 +44,13 @@ TEST_F(GapDetectionTest, DetectsGapAndEmitsEvent) {
     uint8_t payload1[16] = {0};
     uint64_t seq = 1;
     std::memcpy(payload1, &seq, sizeof(seq));
-    ingestor.process_payload(payload1, 16);
+    ingestor.process_payload(payload1, 16, 12345);
     
     // Gap sequence (3) - Should emit GapEvent (S2-REQ-003)
     uint8_t payload3[16] = {0};
     seq = 3;
     std::memcpy(payload3, &seq, sizeof(seq));
-    ingestor.process_payload(payload3, 16);
+    ingestor.process_payload(payload3, 16, 12345);
     
     egbos::shm::MarketEventSlot slot;
     
@@ -76,7 +76,7 @@ TEST_F(GapDetectionTest, DetectsStalenessAndEmitsEvent) {
     uint8_t payload[16] = {0};
     uint64_t seq = 1;
     std::memcpy(payload, &seq, sizeof(seq));
-    ingestor.process_payload(payload, 16);
+    ingestor.process_payload(payload, 16, 12345);
     
     // Fast forward past 500ms
     uint64_t future_time = 600000000ULL; // 600ms

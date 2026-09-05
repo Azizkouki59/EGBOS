@@ -17,7 +17,7 @@ using namespace egbos;
 using namespace egbos::core;
 using namespace egbos::wal;
 
-// Helper: create a temp WAL file path for tests
+// Helper: create and automatically clean up temp WAL files for tests
 static std::string tmp_wal_primary() {
     char buf[] = "/dev/shm/egbos_test_wal_XXXXXX";
     int fd = mkstemp(buf);
@@ -32,11 +32,20 @@ static std::string tmp_wal_shadow() {
     return std::string(buf);
 }
 
-TEST(PositionEngineTest, ApplyFillUpdatesGrossExposure) {
-    auto primary = tmp_wal_primary();
-    auto shadow  = tmp_wal_shadow();
+struct ScopedWalFiles {
+    std::string primary;
+    std::string shadow;
+    ScopedWalFiles() : primary(tmp_wal_primary()), shadow(tmp_wal_shadow()) {}
+    ~ScopedWalFiles() {
+        if (!primary.empty()) ::unlink(primary.c_str());
+        if (!shadow.empty())  ::unlink(shadow.c_str());
+    }
+};
 
-    WalWriter writer(primary.c_str(), shadow.c_str());
+TEST(PositionEngineTest, ApplyFillUpdatesGrossExposure) {
+    ScopedWalFiles wal;
+
+    WalWriter writer(wal.primary.c_str(), wal.shadow.c_str());
     GovernanceFlags gov{};
     gov.pos_limit_latch.store(100000, std::memory_order_relaxed);
 
@@ -59,10 +68,9 @@ TEST(PositionEngineTest, ApplyFillUpdatesGrossExposure) {
 }
 
 TEST(PositionEngineTest, ApplyFillAccumulatesExposure) {
-    auto primary = tmp_wal_primary();
-    auto shadow  = tmp_wal_shadow();
+    ScopedWalFiles wal;
 
-    WalWriter writer(primary.c_str(), shadow.c_str());
+    WalWriter writer(wal.primary.c_str(), wal.shadow.c_str());
     GovernanceFlags gov{};
     gov.pos_limit_latch.store(100000, std::memory_order_relaxed);
 
@@ -88,16 +96,15 @@ TEST(PositionEngineTest, WalBeforeState_Kill9Simulation) {
     const int N_CYCLES = 10;
 
     for (int cycle = 0; cycle < N_CYCLES; ++cycle) {
-        auto primary = tmp_wal_primary();
-        auto shadow  = tmp_wal_shadow();
+        ScopedWalFiles wal;
 
-        WalWriter writer(primary.c_str(), shadow.c_str());
+        WalWriter writer(wal.primary.c_str(), wal.shadow.c_str());
         GovernanceFlags gov{};
         gov.pos_limit_latch.store(1000000, std::memory_order_relaxed);
         PositionEngine engine(writer, gov);
 
         struct stat st_before{};
-        ::stat(primary.c_str(), &st_before);
+        ::stat(wal.primary.c_str(), &st_before);
 
         FillEvent fill{};
         fill.instrument_id = static_cast<uint32_t>(cycle + 1);
@@ -109,7 +116,7 @@ TEST(PositionEngineTest, WalBeforeState_Kill9Simulation) {
 
         // WAL must have grown before state mutation — AD-012 invariant
         struct stat st_after{};
-        ::stat(primary.c_str(), &st_after);
+        ::stat(wal.primary.c_str(), &st_after);
         EXPECT_GT(st_after.st_size, st_before.st_size)
             << "Cycle " << cycle << ": WAL did not grow — AD-012 violated";
 
@@ -127,10 +134,9 @@ TEST(PositionEngineTest, WalBeforeState_Kill9Simulation) {
 // Spec §4.2: gross_exposure_ == Σ |signed_qty| across all applied fills.
 // Applies 10M alternating buy/sell fills and verifies the invariant holds.
 TEST(PositionEngineTest, PositionInvariant_10M_Fills) {
-    auto primary = tmp_wal_primary();
-    auto shadow  = tmp_wal_shadow();
+    ScopedWalFiles wal;
 
-    WalWriter writer(primary.c_str(), shadow.c_str());
+    WalWriter writer(wal.primary.c_str(), wal.shadow.c_str());
     GovernanceFlags gov{};
     gov.pos_limit_latch.store(std::numeric_limits<int64_t>::max(),
                               std::memory_order_relaxed);
