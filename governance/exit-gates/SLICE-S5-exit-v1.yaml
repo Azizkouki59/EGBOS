@@ -1,0 +1,53 @@
+# governance/exit-gates/SLICE-S5-exit-v1.yaml
+# S5 Exit Gate â€” Live Feed Integration (L0) â€” Market Data Qualification
+#
+# Spec reference: S5 Implementation Specification
+# This gate document certifies that all S5 acceptance criteria
+# have been satisfied.
+#
+# STATUS: OPEN
+# The gate is open pending empirical live feed validation and 14-day trials.
+
+schema_version: 1
+gate_id: "SLICE-S5-exit-v1"
+slice: "S5"
+title: "S5 Exit Gate â€” Live Feed Integration (L0) â€” Market Data Qualification"
+status: "OPEN"
+version: 1
+
+acceptance_criteria:
+  - id: "S5-AC-001"
+    description: "CLAIM-L3-05 at V4 (startup buffer sized against live feed jitter â€” empirical measurement on live data)"
+    spec_reference: "S5-REQ-001"
+    status: "PENDING"
+
+  - id: "S5-AC-002"
+    description: "CLAIM-L0-002 at V4 (or V3 with waiver documenting known gap type)"
+    spec_reference: "S5-REQ-002"
+    status: "PENDING"
+
+  - id: "S5-AC-003"
+    description: "14 consecutive days uptime with zero INV-001 violations"
+    spec_reference: "S5-REQ-003"
+    status: "PENDING"
+
+  - id: "S5-AC-004"
+    description: "14 nightly replay validations passed (byte-identical against Tier-0 log)"
+    spec_reference: "S5-REQ-004"
+    status: "PENDING"
+
+  - id: "S5-AC-005"
+    description: "G2 production deploy gate green: govcheck deploy-gate --target production"
+    spec_reference: "EGBOS_MASTER.md"
+    status: "PENDING"
+
+  - id: "S5-AC-006"
+    description: "MARKET-DATA-001.yaml exit sign-off document completed"
+    spec_reference: "EGBOS_MASTER.md"
+    status: "PENDING"
+
+signature:
+  signer: "PENDING"
+  date: "PENDING"
+  git_commit_sha: "PENDING"
+  govcheck_output_sha256: "PENDING"

@@ -1,0 +1,210 @@
+---
+# governance/schemas/s5_artifact_schema.yaml
+# EGBOS S5 Evidence Artifact Schema
+#
+# Purpose:
+#   Define the mandatory provenance fields for every S5 evidence artifact.
+#   This schema prevents synthetic or local artifacts from being mistaken
+#   for live operational evidence.
+#
+# Classification system:
+#   LOCAL_SYNTHETIC       â€” produced by a local in-process test; no exchange connection
+#   OFFLINE_REPLAY        â€” produced by replaying a recorded WAL/log offline
+#   LIVE_OPERATIONAL      â€” produced by observing a real production or exchange-feed process
+#   ARCHITECTURAL_ENFORCEMENT â€” proves that a security/network policy is enforced
+#                               at the OS/network layer, not just at application level
+#
+# GOVERNANCE RULE:
+#   No LOCAL_SYNTHETIC artifact may be used to satisfy a V4 requirement that
+#   explicitly requires LIVE_OPERATIONAL evidence.
+#   Only a human governance reviewer may reclassify an artifact.
+#
+# Source revision: 2663389
+
+schema_version: 1
+schema_id: "S5-ARTIFACT-SCHEMA-v1"
+
+required_fields:
+  artifact_id:
+    type: string
+    description: >
+      Unique identifier for this artifact. Format: S5-REQ-NNN-<component>-<version>.
+      Example: S5-REQ-001-EXEC-RING-HWM-v1
+
+  requirement_id:
+    type: string
+    description: >
+      The S5 requirement this artifact is intended to satisfy.
+      One of: S5-REQ-001, S5-REQ-002, S5-REQ-003, S5-REQ-004, S5-REQ-005
+
+  classification:
+    type: enum
+    allowed_values:
+      - LOCAL_SYNTHETIC
+      - OFFLINE_REPLAY
+      - LIVE_OPERATIONAL
+      - ARCHITECTURAL_ENFORCEMENT
+    description: >
+      Mandatory provenance classification. A reviewer must explicitly set this
+      field. It may NOT be inferred from test results. Automatic promotion from
+      LOCAL_SYNTHETIC to LIVE_OPERATIONAL is never permitted.
+
+  governed_component:
+    type: string
+    description: >
+      The EGBOS claim ID this artifact provides evidence for.
+      Example: CLAIM-L3-05, CLAIM-L0-002, CLAIM-WAL-001
+
+  source_revision:
+    type: string
+    description: >
+      Git commit SHA of the codebase at artifact collection time.
+      Must match the committed HEAD. Cannot be PENDING for LIVE_OPERATIONAL.
+
+  collection_timestamp:
+    type: string
+    format: ISO-8601 UTC
+    description: >
+      When the artifact was produced. For LOCAL_SYNTHETIC, this is the local
+      wall clock. For LIVE_OPERATIONAL, this must be a synchronized UTC timestamp.
+
+  environment:
+    type: string
+    description: >
+      Hardware/environment identifier. Example: dev-workstation-001, prod-host-A.
+      For LIVE_OPERATIONAL, must match the production system identifier.
+
+  executable:
+    type: string
+    description: >
+      Name of the binary that produced the artifact.
+
+  methodology:
+    type: string
+    description: >
+      Description of how the artifact was produced. For LOCAL_SYNTHETIC, must
+      explicitly state "in-process" or "offline". For LIVE_OPERATIONAL, must
+      reference the feed source and collection procedure.
+
+  input_sha256:
+    type: string
+    description: >
+      SHA-256 of the primary input (WAL file, PCAP, or sequence log).
+      Use "N/A" for synthetic harnesses with no persistent input file.
+
+  output_sha256:
+    type: string
+    description: >
+      SHA-256 of this artifact file itself. Computed by govcheck sign workflow.
+      Set to PENDING_GOVCHECK_SIGN before signing.
+
+  review_status:
+    type: enum
+    allowed_values:
+      - PENDING_REVIEW
+      - REVIEWED_ACCEPTED
+      - REVIEWED_REJECTED
+    description: >
+      Human reviewer status. Only REVIEWED_ACCEPTED artifacts may contribute
+      to V4 promotion. LOCAL_SYNTHETIC artifacts may be REVIEWED_ACCEPTED
+      for infrastructure purposes, but not for V4 satisfaction.
+
+  limitations:
+    type: list
+    description: >
+      Explicit list of what this artifact does NOT prove. Every artifact must
+      have at least one limitation entry. The limitation entry must reference
+      what LIVE_OPERATIONAL evidence would look like instead.
+
+  v4_satisfied:
+    type: boolean
+    description: >
+      True only if this artifact, together with all governance composition
+      requirements, satisfies the V4 gate for the governed component.
+      LOCAL_SYNTHETIC artifacts MUST set this to false.
+      Only a human governance reviewer may set this to true.
+
+# â”€â”€ Classification requirements â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+classification_requirements:
+  LOCAL_SYNTHETIC:
+    v4_satisfied: false   # mandatory â€” never true
+    requires:
+      - artifact_id
+      - requirement_id
+      - governed_component
+      - source_revision
+      - collection_timestamp
+      - environment
+      - executable
+      - methodology
+      - output_sha256
+      - limitations
+
+  OFFLINE_REPLAY:
+    v4_satisfied: false   # infrastructure-level only
+    requires:
+      - artifact_id
+      - requirement_id
+      - governed_component
+      - source_revision
+      - collection_timestamp
+      - environment
+      - executable
+      - methodology
+      - input_sha256
+      - output_sha256
+      - limitations
+
+  LIVE_OPERATIONAL:
+    v4_satisfied: null    # may be true after human review
+    requires:
+      - artifact_id
+      - requirement_id
+      - governed_component
+      - source_revision
+      - collection_timestamp
+      - environment
+      - executable
+      - methodology
+      - input_sha256      # e.g. PCAP sha256 for gap detection
+      - output_sha256
+      - review_status     # must be REVIEWED_ACCEPTED
+      - limitations       # may be shorter than LOCAL_SYNTHETIC but not empty
+    additional_fields:
+      - feed_source         # exchange / feed provider identifier
+      - feed_protocol       # e.g. ITCH, FIX, UDP-multicast
+      - observation_start_utc
+      - observation_end_utc
+
+  ARCHITECTURAL_ENFORCEMENT:
+    v4_satisfied: null    # may be true after human review
+    requires:
+      - artifact_id
+      - requirement_id
+      - governed_component
+      - source_revision
+      - collection_timestamp
+      - environment
+      - methodology
+      - output_sha256
+      - review_status
+      - limitations
+    additional_fields:
+      - enforcement_mechanism  # e.g. iptables, seccomp, network-ns
+      - enforcement_policy_sha256
+      - tested_deny_destination
+
+# â”€â”€ Upgrade rules â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+upgrade_rules:
+  - from: LOCAL_SYNTHETIC
+    to: LIVE_OPERATIONAL
+    requires: "Human governance reviewer re-runs the harness on live feed and re-signs artifact"
+    prohibited_actions:
+      - "Changing classification field without re-running collection"
+      - "Copying a LOCAL_SYNTHETIC artifact and relabelling it LIVE_OPERATIONAL"
+
+  - from: OFFLINE_REPLAY
+    to: LIVE_OPERATIONAL
+    requires: "14 consecutive nightly runs on live WAL from production Tier-0"
+    prohibited_actions:
+      - "Auto-promoting based on test suite passage alone"
