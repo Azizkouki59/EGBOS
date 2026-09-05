@@ -45,6 +45,16 @@ private:
 public:
     // Only CROSS_PLANE_READ accesses this
     std::atomic<int64_t> gross_exposure_{0};
+
+    struct PositionSnapshot {
+        int64_t  position;
+        uint64_t order_tag;
+        int64_t  x_l;
+        int64_t  gross_exposure;
+    };
+
+    void snapshot_into(PositionSnapshot& out) const noexcept;
+    void hydrate_from(const PositionSnapshot& in) noexcept;
 };
 
 } // namespace egbos::core

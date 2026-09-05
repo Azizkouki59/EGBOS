@@ -8,6 +8,7 @@
 #include <cstring>
 #include <algorithm>
 #if defined(_WIN32)
+// DEVELOPMENT/TEST ONLY — NOT TIER-0
 #include <io.h>
 inline ssize_t writev(int fd, const struct iovec *iov, int iovcnt) {
     ssize_t total = 0;
@@ -36,7 +37,7 @@ FeedIngestor::FeedIngestor(
       expected_seq_(1),
       last_recv_time_ns_(0) {}
 
-void FeedIngestor::process_payload(const uint8_t* payload, std::size_t length) noexcept {
+void FeedIngestor::process_payload(const uint8_t* payload, std::size_t length, uint64_t rx_timestamp_ns) noexcept {
     // Network framing stub: Assume 8-byte sequence number followed by payload
     if (length < sizeof(uint64_t)) [[unlikely]] {
         return;
@@ -45,10 +46,9 @@ void FeedIngestor::process_payload(const uint8_t* payload, std::size_t length) n
     uint64_t seq_num;
     std::memcpy(&seq_num, payload, sizeof(uint64_t));
     
-    // Update staleness tracker immediately
-    // In production, this would use a fast timestamp intrinsic like rdtsc
-    // Here we use a mock placeholder representing the current hardware time so tests can progress.
-    last_recv_time_ns_ = 1;
+    // D4: Record CLOCK_MONOTONIC_RAW timestamp injected by the io_uring CQE caller.
+    // Acquired immediately after CQE completion, before sequence extraction.
+    last_recv_time_ns_ = rx_timestamp_ns;
 
     // Hot-path branch bias: Normal ordered delivery
     if (seq_num == expected_seq_) [[likely]] {
@@ -59,7 +59,7 @@ void FeedIngestor::process_payload(const uint8_t* payload, std::size_t length) n
         }
         
         expected_seq_++;
-        normalize_and_forward(payload + sizeof(uint64_t), length - sizeof(uint64_t));
+        normalize_and_forward(payload + sizeof(uint64_t), length - sizeof(uint64_t), rx_timestamp_ns);
     } 
     // Gap Detection (S2-REQ-002)
     else if (seq_num > expected_seq_) [[unlikely]] {
@@ -69,7 +69,7 @@ void FeedIngestor::process_payload(const uint8_t* payload, std::size_t length) n
         emit_synthetic_event(0, 1); // 1 = GAP type (Implementation Defined)
         
         expected_seq_ = seq_num + 1;
-        normalize_and_forward(payload + sizeof(uint64_t), length - sizeof(uint64_t));
+        normalize_and_forward(payload + sizeof(uint64_t), length - sizeof(uint64_t), rx_timestamp_ns);
     } 
     // Duplicate / Late Packet
     else [[unlikely]] {
@@ -90,12 +90,16 @@ void FeedIngestor::check_staleness(uint64_t current_time_ns) noexcept {
     }
 }
 
-void FeedIngestor::normalize_and_forward(const uint8_t* event_data, std::size_t event_len) noexcept {
+void FeedIngestor::normalize_and_forward(const uint8_t* event_data, std::size_t event_len, uint64_t rx_timestamp_ns) noexcept {
     // Zero-allocation FlatBuffers normalization
     // (Stub: maps raw bytes directly into the aligned MarketEventSlot structure)
     egbos::shm::MarketEventSlot slot;
     std::memset(slot.data, 0, sizeof(slot.data));
     std::memcpy(slot.data, event_data, std::min(event_len, sizeof(slot.data)));
+
+    // Inject rx_timestamp_ns into the FlatBuffer's ingestion_tsc_ field (offset 24).
+    uint64_t endian_ts = ::flatbuffers::EndianScalar(rx_timestamp_ns);
+    std::memcpy(slot.data + 24, &endian_ts, sizeof(uint64_t));
 
     // Tier-0 Durability Logging (S2-REQ-004)
     // NVMe ordering: Must append to Tier-0 BEFORE pushing to SPSC (Replay Fidelity)

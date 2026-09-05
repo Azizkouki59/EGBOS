@@ -82,6 +82,18 @@ private:
     int32_t best_ask_index_{kMaxPriceLevels};
     
     void update_bbo() noexcept;
+
+public:
+    struct LobInternalSnapshot {
+        int64_t  anchor_price;
+        int64_t  tick_size;
+        int32_t  best_bid_index;
+        int32_t  best_ask_index;
+        uint32_t order_count;
+    };
+
+    size_t snapshot_into(uint8_t* buf, size_t buf_len) const noexcept;
+    bool hydrate_from(const uint8_t* buf, size_t len) noexcept;
 };
 
 } // namespace egbos::l1

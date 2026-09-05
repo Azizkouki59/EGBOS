@@ -61,6 +61,20 @@ void PositionEngine::apply_mass_cancel() {
     gross_exposure_.store(std::abs(position_), std::memory_order_release);
 }
 
+void PositionEngine::snapshot_into(PositionSnapshot& out) const noexcept {
+    out.position = position_;
+    out.order_tag = order_tag_;
+    out.x_l = x_l_.load(std::memory_order_acquire);
+    out.gross_exposure = gross_exposure_.load(std::memory_order_acquire);
+}
+
+void PositionEngine::hydrate_from(const PositionSnapshot& in) noexcept {
+    position_ = in.position;
+    order_tag_ = in.order_tag;
+    x_l_.store(in.x_l, std::memory_order_release);
+    gross_exposure_.store(in.gross_exposure, std::memory_order_release);
+}
+
 void PositionEngine::sync_position() {
     wal::WalRecord record;
     record.record_type = static_cast<uint32_t>(wal::WalRecordType::POSITION_SYNC);

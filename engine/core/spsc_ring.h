@@ -53,6 +53,17 @@ public:
     SpscRing& operator=(SpscRing&&) = delete;
 
     // ── Producer Interface (Spec §5.2, §5.3, §13.2, §14.2) ───────────────────
+    [[nodiscard]] uint64_t producer_hwm_upper_bound() const noexcept {
+        assert_producer_thread();
+        // Producer reads its own index and its own cached view of tail
+        return head_.load(std::memory_order_relaxed) - tail_cache_;
+    }
+
+    [[nodiscard]] uint64_t producer_lazy_refreshes() const noexcept {
+        assert_producer_thread();
+        return lazy_refreshes_;
+    }
+
     // push() — called from producer thread only; spins on full
     void push(const T& item) noexcept {
         assert_producer_thread();
@@ -66,6 +77,7 @@ public:
             while (true) {
                 // Producer reads consumer index with acquire
                 tail_cache_ = tail_.load(std::memory_order_acquire);
+                lazy_refreshes_++;
                 if (head - tail_cache_ < Capacity) {
                     break; // Space available
                 }
@@ -118,7 +130,7 @@ public:
 
 private:
     // Thread identity assertion helpers (§5.4)
-    void assert_producer_thread() noexcept {
+    void assert_producer_thread() const noexcept {
 #if defined(__linux__) && !defined(NDEBUG)
         const pthread_t id = ::pthread_self();
         pthread_t expected = 0;
@@ -130,7 +142,7 @@ private:
 #endif
     }
 
-    void assert_consumer_thread() noexcept {
+    void assert_consumer_thread() const noexcept {
 #if defined(__linux__) && !defined(NDEBUG)
         const pthread_t id = ::pthread_self();
         pthread_t expected = 0;
@@ -147,15 +159,16 @@ private:
     // Producer cache line
     alignas(kCacheLineSize) std::atomic<uint64_t> head_{0}; // Producer index
     uint64_t tail_cache_{0};                                // Owned by producer
+    uint64_t lazy_refreshes_{0};                            // Owned by producer
 #if defined(__linux__) && !defined(NDEBUG)
-    std::atomic<pthread_t> producer_id_{0};
+    mutable std::atomic<pthread_t> producer_id_{0};
 #endif
 
     // Consumer cache line
     alignas(kCacheLineSize) std::atomic<uint64_t> tail_{0}; // Consumer index
     uint64_t head_cache_{0};                                // Owned by consumer
 #if defined(__linux__) && !defined(NDEBUG)
-    std::atomic<pthread_t> consumer_id_{0};
+    mutable std::atomic<pthread_t> consumer_id_{0};
 #endif
 
     // Slots (must be separate from consumer index to prevent false sharing)

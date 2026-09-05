@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstddef>
 #if defined(_WIN32)
+// DEVELOPMENT/TEST ONLY — NOT TIER-0
 struct iovec {
     void  *iov_base;
     size_t iov_len;
@@ -43,7 +44,7 @@ public:
 
     // Hot-path entry point. Network boundary agnostic (UDP/TCP payload).
     // Parses exchange protocol, normalizes to RawMarketEvent, writes to Tier-0, pushes to SPSC.
-    void process_payload(const uint8_t* payload, std::size_t length) noexcept;
+    void process_payload(const uint8_t* payload, std::size_t length, uint64_t rx_timestamp_ns) noexcept;
 
     // Heartbeat check invoked by the polling loop if no packets arrive.
     // Transitions to FEED_STALE if threshold exceeded.
@@ -51,7 +52,7 @@ public:
 
 private:
     // Hot-path parsing and normalization.
-    void normalize_and_forward(const uint8_t* event_data, std::size_t event_len) noexcept;
+    void normalize_and_forward(const uint8_t* event_data, std::size_t event_len, uint64_t rx_timestamp_ns) noexcept;
     
     // Tier-0 NVMe durability using writev for zero-copy coalescing.
     void tier0_append(const struct iovec* iov, int iovcnt) noexcept;
@@ -66,6 +67,7 @@ private:
     
     FeedState current_state_;
     uint64_t  expected_seq_;
+    // D4: Kernel CLOCK_MONOTONIC_RAW timestamp in nanoseconds.
     uint64_t  last_recv_time_ns_;
     
     // Configurable thresholds (normally from spec/ADRs)

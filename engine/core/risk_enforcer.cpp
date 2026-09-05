@@ -57,4 +57,13 @@ void RiskEnforcer::watchdog_tick() {
     // Software path: kill switch < 1ms response.
 }
 
+void RiskEnforcer::snapshot_into(RiskSnapshot& out) const noexcept {
+    out.current_state = static_cast<uint32_t>(current_state_);
+}
+
+void RiskEnforcer::hydrate_from(const RiskSnapshot& in) noexcept {
+    current_state_ = static_cast<QuotingState>(in.current_state);
+    last_heartbeat_tsc_ = 0;
+}
+
 } // namespace egbos::core

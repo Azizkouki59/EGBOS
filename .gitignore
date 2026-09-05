@@ -60,3 +60,31 @@ AUDIT_PROMPT_S0.md
 *.log
 configure.log
 build.log
+
+# S5 generated build and test directories
+build_s5/
+build_s5_dev/
+build_s2/
+build_test/
+build_l1_audit/
+hwm_harness
+scratch/
+
+# Session scratch files
+check.txt
+stat.txt
+status.txt
+logs.txt
+full_diff.txt
+tier0_audit.txt
+
+# Session helper scripts
+ci_check.py
+verify_all.py
+get_actual_logs.py
+get_job_logs.py
+get_latest_p7_run.py
+get_latest_run.py
+get_log.py
+get_main_commit.py
+search_shas.sh

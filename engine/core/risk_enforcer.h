@@ -36,12 +36,23 @@ public:
 
     QuotingState get_state() const { return current_state_; }
 
+    // Test-only: set runtime heartbeat TSC to verify it does NOT affect snapshot bytes.
+    // Must not be called in production paths.
+    void set_heartbeat_tsc_for_test(uint64_t tsc) noexcept { last_heartbeat_tsc_ = tsc; }
+
 private:
     GovernanceFlags& governance_flags_;
     PositionEngine& position_engine_; // L4 has reference but only uses CROSS_PLANE_READ
 
     QuotingState current_state_{QuotingState::INACTIVE};
     uint64_t last_heartbeat_tsc_{0};
+public:
+    struct RiskSnapshot {
+        uint32_t current_state;
+    };
+
+    void snapshot_into(RiskSnapshot& out) const noexcept;
+    void hydrate_from(const RiskSnapshot& in) noexcept;
 };
 
 } // namespace egbos::core
