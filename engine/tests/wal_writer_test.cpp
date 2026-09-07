@@ -478,6 +478,146 @@ TEST(WalWriterTest, ShadowMirror) {
               primary_result.last_valid_sequence);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// BUG 1 validation: write_sync() with payload_length = kMaxPayloadSize + 1
+// must trigger wal_fatal (abort). Verified via forked child process.
+// ─────────────────────────────────────────────────────────────────────────────
+
+TEST(WalWriterTest, PayloadOversizeCallsFatal) {
+    TempDir tmp;
+
+    pid_t pid = ::fork();
+    ASSERT_GE(pid, 0) << "fork() failed";
+
+    if (pid == 0) {
+        // Child: attempt to write a record with payload_length > kMaxPayloadSize.
+        // This must call wal_fatal() which calls std::abort().
+        // Use a stack buffer large enough for the oversized record.
+        constexpr uint32_t kOversize = static_cast<uint32_t>(
+            egbos::wal::kMaxPayloadSize + 1);
+        alignas(8) uint8_t buf[egbos::wal::kWalHeaderWireSize + kOversize]{};
+        auto* rec = reinterpret_cast<egbos::wal::WalRecord*>(buf);
+        std::memset(rec, 0, sizeof(buf));
+        rec->record_type   = static_cast<uint32_t>(egbos::wal::WalRecordType::ORDER_NEW);
+        rec->payload_length = kOversize;
+
+        egbos::wal::WalWriter writer(tmp.primary_path().c_str(),
+                                     tmp.shadow_path().c_str());
+        writer.write_sync(rec);
+        // Should never reach here — wal_fatal calls std::abort()
+        std::_Exit(0);
+    }
+
+    // Parent: wait for child and verify it was killed by SIGABRT.
+    // wal_fatal() calls std::abort() which raises SIGABRT.
+    // Accepting any non-zero exit code would be too permissive — a crash
+    // from an unrelated cause (e.g. SIGSEGV in io_uring init) would produce
+    // a false pass. SIGABRT is the only correct signal here.
+    int status = 0;
+    pid_t waited = ::waitpid(pid, &status, 0);
+    ASSERT_EQ(waited, pid);
+    ASSERT_TRUE(WIFSIGNALED(status))
+        << "Child exited normally or stopped — wal_fatal did not abort. "
+        << "WEXITSTATUS=" << (WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+    EXPECT_EQ(WTERMSIG(status), SIGABRT)
+        << "Child was signalled but not by SIGABRT (signal="
+        << WTERMSIG(status) << ") — unexpected crash, not wal_fatal";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BUG 2b validation: write a record with payload_length >= 4, corrupt 1 byte
+// of the payload body on disk, re-scan — must detect truncation.
+// was_clean == false; corrupted record NOT counted in valid_records.
+// ─────────────────────────────────────────────────────────────────────────────
+
+TEST(WalWriterTest, PayloadCrcDetectsCorruption) {
+    TempDir tmp;
+
+    // Payload layout (8 bytes total):
+    //   bytes [0..3] — data covered by CRC32C
+    //   bytes [4..7] — CRC32C slot (written by write_sync)
+    // The corruption will land at payload byte index 1 — inside [0..3],
+    // i.e. in the CRC-covered region, NOT in the CRC slot itself.
+    constexpr uint32_t kPayloadLen = 8;
+    constexpr std::size_t kNumRecordsBefore = 5;  // header-only records before target
+
+    {
+        egbos::wal::WalWriter writer(tmp.primary_path().c_str(),
+                                     tmp.shadow_path().c_str());
+
+        // Write kNumRecordsBefore records with no payload
+        for (std::size_t i = 0; i < kNumRecordsBefore; ++i) {
+            alignas(8) uint8_t buf[egbos::wal::kWalHeaderWireSize]{};
+            auto* rec = reinterpret_cast<egbos::wal::WalRecord*>(buf);
+            fill_test_record(rec, egbos::wal::WalRecordType::ORDER_NEW,
+                             1, static_cast<int64_t>(i), 0);
+            writer.write_sync(rec);
+        }
+
+        // Write target record with payload_length = kPayloadLen
+        alignas(8) uint8_t buf[egbos::wal::kWalHeaderWireSize + kPayloadLen]{};
+        auto* rec = reinterpret_cast<egbos::wal::WalRecord*>(buf);
+        std::memset(rec, 0, sizeof(buf));
+        rec->record_type    = static_cast<uint32_t>(egbos::wal::WalRecordType::POSITION_SYNC);
+        rec->instrument_id  = 42;
+        rec->payload_length = kPayloadLen;
+        // Write known data into payload body (first 4 bytes; last 4 = CRC slot)
+        rec->payload[0] = 0xAB;
+        rec->payload[1] = 0xCD;
+        rec->payload[2] = 0xEF;
+        rec->payload[3] = 0x01;
+        // Last 4 bytes of payload are CRC — write_sync() will fill them
+        writer.write_sync(rec);
+    }
+
+    // Verify clean write of kNumRecordsBefore + 1 records
+    {
+        auto result = egbos::wal::WalWriter::scan_wal(tmp.primary_path().c_str());
+        ASSERT_EQ(result.valid_records, kNumRecordsBefore + 1)
+            << "Pre-corruption: unexpected record count";
+        ASSERT_TRUE(result.was_clean) << "Pre-corruption: WAL not clean";
+    }
+
+    // Corrupt payload byte index 1 of the target record.
+    // Byte-level proof that this lands in the CRC-covered data region:
+    //   record_start  = kNumRecordsBefore * kWalHeaderWireSize
+    //                 = 5 * 72 = 360
+    //   payload_start = record_start + kWalHeaderWireSize = 360 + 72 = 432
+    //   corrupt_byte  = payload_start + 1 = 433   ← payload[1], value 0xCD
+    //   CRC slot      = payload_start + 4 = 436..439  ← NOT touched
+    // Therefore: CRC32C is computed over payload[0..3], corruption is at [1].
+    {
+        int fd = ::open(tmp.primary_path().c_str(), O_RDWR);
+        ASSERT_GE(fd, 0);
+
+        // kNumRecordsBefore records each have payload_length=0, so each
+        // occupies exactly kWalHeaderWireSize bytes. The target record
+        // starts at byte 5*72 = 360.
+        const off_t payload_start = static_cast<off_t>(
+            kNumRecordsBefore * egbos::wal::kWalHeaderWireSize +
+            egbos::wal::kWalHeaderWireSize);
+        // Corrupt data byte at payload[1] — inside CRC coverage [0..3]
+        const off_t corrupt_offset = payload_start + 1;
+
+        uint8_t bad_byte = 0x00;  // was 0xCD — guaranteed different
+        ssize_t n = ::pwrite(fd, &bad_byte, 1, corrupt_offset);
+        ASSERT_EQ(n, 1);
+        ::close(fd);
+    }
+
+    // Re-scan: must detect truncation at the corrupted record
+    {
+        auto result = egbos::wal::WalWriter::scan_wal(tmp.primary_path().c_str());
+        EXPECT_FALSE(result.was_clean)
+            << "Expected was_clean=false after payload corruption";
+        EXPECT_EQ(result.valid_records, kNumRecordsBefore)
+            << "Corrupted record must not be counted as valid";
+        EXPECT_EQ(result.truncation_byte_offset,
+                  kNumRecordsBefore * egbos::wal::kWalHeaderWireSize)
+            << "Truncation offset must point to start of corrupted record";
+    }
+}
+
 }  // namespace
 
 #else  // !__linux__

@@ -592,11 +592,32 @@ public:
         // Clear _pad for deterministic wire format
         std::memset(record->_pad, 0, sizeof(record->_pad));
 
-        // Validate payload_length (spec §4.3: 0–256 bytes)
-        assert(record->payload_length <= kMaxPayloadSize &&
-               "WAL record payload exceeds maximum 256 bytes");
+        // ── Validate payload_length (spec §4.3: 0–256 bytes) ──────────────
+        // Runtime check — always active regardless of NDEBUG (GC-WAL-BUG1).
+        if (record->payload_length > kMaxPayloadSize) {
+            wal_fatal("write_sync: payload_length exceeds kMaxPayloadSize");
+        }
 
-        // ── Step 3: Compute CRC32C (spec §4.3, §14.1) ───────────────────────
+        // ── Step 2b: Payload CRC32C (spec §4.3 payload[last-4..last]) ───────
+        // If payload_length >= 4: CRC32C of first (payload_length - 4) bytes
+        // is written into the last 4 bytes of the payload, little-endian.
+        // If payload_length < 4: no payload CRC is possible — only the header
+        // CRC32C (bytes [0, 60)) protects the record. See static_assert below.
+        //
+        // static_assert: payload_length is a runtime value; we document here
+        // that the minimum payload size required for CRC coverage is 4 bytes.
+        // Records with payload_length in [0, 3] are protected by header CRC
+        // only — this is intentional per spec §4.3.
+        if (record->payload_length >= 4) {
+            const uint32_t crc_cover_len = record->payload_length - 4;
+            const uint32_t payload_crc = detail::compute_crc32c(
+                record->payload, crc_cover_len);
+            // Write CRC32C in the last 4 bytes of the payload (little-endian)
+            std::memcpy(record->payload + crc_cover_len,
+                        &payload_crc, sizeof(payload_crc));
+        }
+
+        // ── Step 3: Compute header CRC32C (spec §4.3, §14.1) ────────────────
         // CRC covers header bytes [0, 60) — all fields before header_crc32c.
         record->header_crc32c =
             detail::compute_crc32c(record, kWalCrcCoverageBytes);
@@ -775,13 +796,33 @@ private:
                 }
             }
 
-            // Step 1: CRC32C Verification (spec §4.7 step 1)
+            // Step 1: Header CRC32C Verification (spec §4.7 step 1)
             // "First CRC failure = WAL truncation point."
             uint32_t computed_crc =
                 detail::compute_crc32c(buf, kWalCrcCoverageBytes);
             if (computed_crc != rec->header_crc32c) {
                 result.was_clean = false;
                 break;  // WAL-CRC: truncation at corrupted record
+            }
+
+            // Step 1b: Payload CRC32C Verification (spec §4.3 payload[last-4..last])
+            // If payload_length >= 4: recompute CRC32C of first
+            // (payload_length - 4) bytes and compare to last 4 bytes.
+            // Mismatch = truncation point (payload corruption).
+            // If payload_length < 4: no payload CRC — header CRC is sole
+            // integrity check for this record (intentional, spec §4.3).
+            if (rec->payload_length >= 4) {
+                const uint32_t crc_cover_len = rec->payload_length - 4;
+                const uint32_t computed_payload_crc = detail::compute_crc32c(
+                    buf + kWalHeaderWireSize, crc_cover_len);
+                uint32_t stored_payload_crc;
+                std::memcpy(&stored_payload_crc,
+                            buf + kWalHeaderWireSize + crc_cover_len,
+                            sizeof(stored_payload_crc));
+                if (computed_payload_crc != stored_payload_crc) {
+                    result.was_clean = false;
+                    break;  // WAL-PAYLOAD-CRC: truncation at payload-corrupted record
+                }
             }
 
             // Step 2: Sequence Gap Detection (spec §4.7 step 2)
