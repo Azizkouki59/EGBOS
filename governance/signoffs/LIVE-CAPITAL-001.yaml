@@ -1,0 +1,14 @@
+schema_version: 1
+document_id: "LIVE-CAPITAL-001"
+title: "Staging Capital Sign-off"
+authority: "EGBOS Governance Board"
+status: "OPEN"
+
+description: "Formally declares the staging capital pool allocated for Phase III (S6/S7) execution. Must be signed by the Founder to unlock S7 paper trading capability."
+
+capital_allocation_usd: "PENDING"
+exchange_account_id: "PENDING"
+
+signature:
+  signer: "PENDING"
+  date: "PENDING"

@@ -1,0 +1,16 @@
+schema_version: 1
+document_id: "PROC-002"
+title: "Execution Server CPU Procurement"
+authority: "EGBOS Governance Board"
+status: "OPEN"
+
+description: "AMD EPYC 9004 series or Intel Xeon Sapphire Rapids; minimum 32 physical cores; CPU affinity pinning for ENGINE_V3 ring threads; NUMA topology documented."
+
+# Document the physical CPU model and core count here
+cpu_model: "PENDING"
+physical_cores: "PENDING"
+numa_nodes: "PENDING"
+
+signature:
+  signer: "PENDING"
+  date: "PENDING"

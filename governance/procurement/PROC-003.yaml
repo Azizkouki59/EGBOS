@@ -1,0 +1,15 @@
+schema_version: 1
+document_id: "PROC-003"
+title: "Execution Server NVMe Storage Procurement"
+authority: "EGBOS Governance Board"
+status: "OPEN"
+
+description: "PCIe Gen 4.0 NVMe; minimum 2TB usable; sequential write > 6 GB/s; fsync latency < 100µs at P99; dedicated controller, not shared with OS volume."
+
+# Attach the fio benchmark output report here
+fio_benchmark_report_ref: "PENDING"
+measured_p99_fsync_us: "PENDING"
+
+signature:
+  signer: "PENDING"
+  date: "PENDING"

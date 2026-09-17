@@ -1,0 +1,14 @@
+schema_version: 1
+document_id: "TIMING-CONSTANTS-001"
+title: "Production Hardware Timing Constants Sign-off"
+authority: "EGBOS Governance Board"
+status: "OPEN"
+
+description: "Certifies that the empirical latency benchmarks recorded in timing_constants.json were derived directly from the physical production hardware procured in S6."
+
+hardware_id_ref: "PENDING"
+json_sha256: "PENDING"
+
+signature:
+  signer: "PENDING"
+  date: "PENDING"

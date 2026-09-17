@@ -1,0 +1,22 @@
+# EGBOS ENGINE_V3 - CPU Affinity and NUMA Configuration
+# Defines explicit core pinning for the latency-critical rings to ensure cache hotness.
+# Wait for S6 physical hardware procurement before populating.
+
+version: 1
+environment: "PRODUCTION"
+numa_node: 0
+
+# Pinning configuration (replace with actual physical core IDs, excluding hyper-threads)
+threads:
+  - name: "BinanceFeedListener"
+    core_id: -1
+  - name: "FeedIngestor"
+    core_id: -1
+  - name: "LobEngine"
+    core_id: -1
+  - name: "RiskEnforcer"
+    core_id: -1
+
+# DPDK / Kernel Bypass Polling cores (if applicable)
+dpdk:
+  lcore_mask: "0x0"

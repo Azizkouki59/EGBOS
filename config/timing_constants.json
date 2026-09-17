@@ -1,0 +1,7 @@
+{
+  "hardware_id": "PENDING",
+  "measurement_date": "PENDING",
+  "p99_fsync_us": 0,
+  "p99_loopback_us": 0,
+  "l0_to_l1_latency_ns": 0
+}

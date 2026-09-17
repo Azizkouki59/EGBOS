@@ -1,0 +1,15 @@
+schema_version: 1
+document_id: "PROC-004"
+title: "Network Interface Procurement"
+authority: "EGBOS Governance Board"
+status: "OPEN"
+
+description: "10 GbE minimum; kernel bypass (DPDK or RDMA) capable NIC; interrupt coalescing disabled for latency-sensitive rings; dedicated VLAN for exchange connectivity."
+
+# Note the NIC model and loopback latency
+nic_model: "PENDING"
+measured_loopback_latency_p99_us: "PENDING"
+
+signature:
+  signer: "PENDING"
+  date: "PENDING"
