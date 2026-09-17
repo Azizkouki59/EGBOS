@@ -1,0 +1,15 @@
+schema_version: 1
+document_id: "PROC-001"
+title: "Co-location Facility Procurement"
+authority: "EGBOS Governance Board"
+status: "DRAFT"
+
+description: "Tier-3 or Tier-4 facility; maximum 2ms one-way latency to primary exchange matching engine; redundant power (2N or N+1); physical security SOC-2 Type II certified."
+
+# Attach the signed SLA PDF path or URL here once procured
+sla_document_ref: "PENDING"
+latency_measurement_report_ref: "PENDING"
+
+signature:
+  signer: "PENDING"
+  date: "PENDING"
