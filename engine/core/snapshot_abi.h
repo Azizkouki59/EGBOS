@@ -41,7 +41,8 @@ struct SerializedOrder {
     uint64_t order_id;
     uint32_t qty;
     int32_t price_index;
-    uint32_t _pad; // align to 8 bytes to avoid implicit padding
+    uint8_t is_bid;
+    uint8_t _pad[3]; // align to 8 bytes to avoid implicit padding
 };
 
 #pragma pack(pop)

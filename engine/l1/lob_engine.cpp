@@ -25,12 +25,12 @@ int32_t LobEngine::price_to_index(int64_t price) const noexcept {
 }
 
 int64_t LobEngine::index_to_price(int32_t index) const noexcept {
-    int64_t ticks = static_cast<int64_t>(index) - static_cast<int64_t>(kMaxPriceLevels / 2);
-    return anchor_price_ + (ticks * tick_size_);
+    int64_t ticks = index - static_cast<int32_t>(kMaxPriceLevels / 2);
+    return anchor_price_ + ticks * tick_size_;
 }
 
-void LobEngine::link_node(int32_t price_index, OrderNode* node) noexcept {
-    PriceLevel& level = price_levels_[price_index];
+void LobEngine::link_node(int32_t price_index, OrderNode* node, bool is_bid) noexcept {
+    PriceLevel& level = is_bid ? bid_levels_[price_index] : ask_levels_[price_index];
     node->prev = level.tail;
     node->next = nullptr;
 
@@ -44,7 +44,7 @@ void LobEngine::link_node(int32_t price_index, OrderNode* node) noexcept {
 }
 
 void LobEngine::unlink_node(OrderNode* node) noexcept {
-    PriceLevel& level = price_levels_[node->price_index];
+    PriceLevel& level = node->is_bid ? bid_levels_[node->price_index] : ask_levels_[node->price_index];
     level.total_qty -= node->qty;
 
     if (node->prev) node->prev->next = node->next;
@@ -70,8 +70,9 @@ void LobEngine::add_order(uint64_t order_id, int64_t price, uint32_t qty, bool i
     node->order_id = order_id;
     node->qty = qty;
     node->price_index = p_idx;
+    node->is_bid = is_bid;
 
-    link_node(p_idx, node);
+    link_node(p_idx, node, is_bid);
     order_lookup_[slot] = node;
 
     // Update BBO trackers
@@ -95,10 +96,18 @@ void LobEngine::modify_order(uint64_t order_id, uint32_t new_qty) noexcept {
     OrderNode* node = order_lookup_[slot];
     if (!node) [[unlikely]] return;
 
-    PriceLevel& level = price_levels_[node->price_index];
+    PriceLevel& level = node->is_bid ? bid_levels_[node->price_index] : ask_levels_[node->price_index];
     level.total_qty -= node->qty;
     level.total_qty += new_qty;
     node->qty = new_qty;
+
+    if (level.total_qty == 0) {
+        if (node->is_bid && node->price_index == best_bid_index_) {
+            update_bbo();
+        } else if (!node->is_bid && node->price_index == best_ask_index_) {
+            update_bbo();
+        }
+    }
 }
 
 void LobEngine::cancel_order(uint64_t order_id) noexcept {
@@ -115,9 +124,9 @@ void LobEngine::cancel_order(uint64_t order_id) noexcept {
     if (!node) [[unlikely]] return;
 
     int32_t p_idx = node->price_index;
+    bool is_bid = node->is_bid;
     unlink_node(node);
 
-    // Shift elements back to preserve linear probing chains
     order_lookup_[slot] = nullptr;
     uint32_t i = (slot + 1) % kMaxOrders;
     while (order_lookup_[i] != nullptr) {
@@ -136,21 +145,52 @@ void LobEngine::cancel_order(uint64_t order_id) noexcept {
 
     order_pool_.release(node);
 
-    // If we removed from BBO and level became empty, update BBO
-    if (p_idx == best_bid_index_ && price_levels_[p_idx].total_qty == 0) {
-        update_bbo();
-    } else if (p_idx == best_ask_index_ && price_levels_[p_idx].total_qty == 0) {
-        update_bbo();
+    if (is_bid) {
+        if (p_idx == best_bid_index_ && bid_levels_[p_idx].total_qty == 0) {
+            update_bbo();
+        }
+    } else {
+        if (p_idx == best_ask_index_ && ask_levels_[p_idx].total_qty == 0) {
+            update_bbo();
+        }
+    }
+}
+
+void LobEngine::upsert_synthetic_level(int64_t price, uint32_t qty, bool is_bid) noexcept {
+    const int32_t price_index = price_to_index(price);
+
+    // Include is_bid in the synthetic_id so bids and asks at the same price never collide.
+    const uint64_t synthetic_id = 0x8000000000000000ULL | (is_bid ? 0x4000000000000000ULL : 0) | static_cast<uint64_t>(price_index);
+
+    if (qty == 0) {
+        cancel_order(synthetic_id);
+        return;
+    }
+
+    uint32_t slot = static_cast<uint32_t>(synthetic_id % kMaxOrders);
+    uint32_t initial_slot = slot;
+    bool found = false;
+    while (order_lookup_[slot] != nullptr) {
+        if (order_lookup_[slot]->order_id == synthetic_id) {
+            found = true;
+            break;
+        }
+        slot = (slot + 1) % kMaxOrders;
+        if (slot == initial_slot) [[unlikely]] break;
+    }
+
+    if (found) {
+        modify_order(synthetic_id, qty);
+    } else {
+        add_order(synthetic_id, price, qty, is_bid);
     }
 }
 
 void LobEngine::update_bbo() noexcept {
-    // Scan downwards for best bid
-    while (best_bid_index_ >= 0 && price_levels_[best_bid_index_].total_qty == 0) {
+    while (best_bid_index_ >= 0 && bid_levels_[best_bid_index_].total_qty == 0) {
         best_bid_index_--;
     }
-    // Scan upwards for best ask
-    while (best_ask_index_ < static_cast<int32_t>(kMaxPriceLevels) && price_levels_[best_ask_index_].total_qty == 0) {
+    while (best_ask_index_ < static_cast<int32_t>(kMaxPriceLevels) && ask_levels_[best_ask_index_].total_qty == 0) {
         best_ask_index_++;
     }
 }
@@ -160,22 +200,20 @@ Top5BidsAsks LobEngine::generate_top5_snapshot() const noexcept {
     std::memset(&snap, 0, sizeof(Top5BidsAsks));
     snap.anchor_price_low32 = static_cast<uint32_t>(anchor_price_ & 0xFFFFFFFF);
 
-    // Top 5 bids
     int count = 0;
     for (int32_t i = best_bid_index_; i >= 0 && count < 5; --i) {
-        if (price_levels_[i].total_qty > 0) {
-            snap.bid_price_offsets[count] = i - static_cast<int32_t>(kMaxPriceLevels / 2);
-            snap.bid_qtys[count] = static_cast<uint16_t>(std::min(price_levels_[i].total_qty, 65535u));
+        if (bid_levels_[i].total_qty > 0) {
+            snap.bid_price_offsets[count] = static_cast<int16_t>(i - static_cast<int32_t>(kMaxPriceLevels / 2));
+            snap.bid_qtys[count] = bid_levels_[i].total_qty;
             count++;
         }
     }
 
-    // Top 5 asks
     count = 0;
     for (int32_t i = best_ask_index_; i < static_cast<int32_t>(kMaxPriceLevels) && count < 5; ++i) {
-        if (price_levels_[i].total_qty > 0) {
-            snap.ask_price_offsets[count] = i - static_cast<int32_t>(kMaxPriceLevels / 2);
-            snap.ask_qtys[count] = static_cast<uint16_t>(std::min(price_levels_[i].total_qty, 65535u));
+        if (ask_levels_[i].total_qty > 0) {
+            snap.ask_price_offsets[count] = static_cast<int16_t>(i - static_cast<int32_t>(kMaxPriceLevels / 2));
+            snap.ask_qtys[count] = ask_levels_[i].total_qty;
             count++;
         }
     }
@@ -186,10 +224,11 @@ Top5BidsAsks LobEngine::generate_top5_snapshot() const noexcept {
 size_t LobEngine::snapshot_into(uint8_t* buf, size_t buf_len) const noexcept {
     if (buf_len < sizeof(LobInternalSnapshot)) return 0;
 
-    // Count active orders
     uint32_t active_orders = 0;
     for (size_t i = 0; i < kMaxPriceLevels; ++i) {
-        auto* curr = price_levels_[i].head;
+        auto* curr = bid_levels_[i].head;
+        while (curr) { active_orders++; curr = curr->next; }
+        curr = ask_levels_[i].head;
         while (curr) { active_orders++; curr = curr->next; }
     }
 
@@ -210,19 +249,35 @@ size_t LobEngine::snapshot_into(uint8_t* buf, size_t buf_len) const noexcept {
     for (size_t i = 0; i < kMaxPriceLevels; ++i) {
         const size_t level_start = offset;
         size_t num_in_level = 0;
-        auto* curr = price_levels_[i].head;
+        // Bids
+        auto* curr = bid_levels_[i].head;
         while (curr) {
             egbos::core::SerializedOrder so{};
             so.order_id    = curr->order_id;
             so.qty         = curr->qty;
             so.price_index = curr->price_index;
-            so._pad        = 0;
+            so.is_bid      = 1;
+            so._pad[0] = 0; so._pad[1] = 0; so._pad[2] = 0;
             std::memcpy(buf + offset, &so, sizeof(so));
             offset += sizeof(so);
             num_in_level++;
             curr = curr->next;
         }
-        // Sort by order_id within the level
+        // Asks
+        curr = ask_levels_[i].head;
+        while (curr) {
+            egbos::core::SerializedOrder so{};
+            so.order_id    = curr->order_id;
+            so.qty         = curr->qty;
+            so.price_index = curr->price_index;
+            so.is_bid      = 0;
+            so._pad[0] = 0; so._pad[1] = 0; so._pad[2] = 0;
+            std::memcpy(buf + offset, &so, sizeof(so));
+            offset += sizeof(so);
+            num_in_level++;
+            curr = curr->next;
+        }
+        
         if (num_in_level > 1) {
             auto* start = reinterpret_cast<egbos::core::SerializedOrder*>(buf + level_start);
             std::sort(start, start + num_in_level,
@@ -249,7 +304,6 @@ bool LobEngine::hydrate_from(const uint8_t* buf, size_t len) noexcept {
 
     if (len < offset + static_cast<size_t>(hdr.order_count) * sizeof(egbos::core::SerializedOrder)) return false;
 
-    // Pre-validate all orders before altering existing book state
     for (uint32_t i = 0; i < hdr.order_count; ++i) {
         egbos::core::SerializedOrder so;
         std::memcpy(&so, buf + offset + i * sizeof(so), sizeof(so));
@@ -258,8 +312,12 @@ bool LobEngine::hydrate_from(const uint8_t* buf, size_t len) noexcept {
         }
     }
 
-    // Clear existing book state
-    for (auto& level : price_levels_) {
+    for (auto& level : bid_levels_) {
+        level.head      = nullptr;
+        level.tail      = nullptr;
+        level.total_qty = 0;
+    }
+    for (auto& level : ask_levels_) {
         level.head      = nullptr;
         level.tail      = nullptr;
         level.total_qty = 0;
@@ -283,10 +341,11 @@ bool LobEngine::hydrate_from(const uint8_t* buf, size_t len) noexcept {
         node->order_id    = so.order_id;
         node->qty         = so.qty;
         node->price_index = so.price_index;
+        node->is_bid      = so.is_bid;
         node->next        = nullptr;
         node->prev        = nullptr;
 
-        link_node(so.price_index, node);
+        link_node(so.price_index, node, so.is_bid);
 
         uint32_t slot         = so.order_id % kMaxOrders;
         uint32_t initial_slot = slot;

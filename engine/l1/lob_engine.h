@@ -22,16 +22,17 @@ struct OrderNode {
     uint64_t order_id;
     uint32_t qty;
     int32_t price_index;
+    bool is_bid;
     OrderNode* next;
     OrderNode* prev;
 };
 
 // Top 5 Book cache-aligned struct (exactly 64 bytes)
 struct alignas(64) Top5BidsAsks {
-    int32_t bid_price_offsets[5]; // Price offsets (ticks) from anchor
-    int32_t ask_price_offsets[5]; 
-    uint16_t bid_qtys[5];         // Quantities
-    uint16_t ask_qtys[5];
+    uint32_t bid_qtys[5];         // Quantities (widened to 32-bit to avoid 10^7 saturation)
+    uint32_t ask_qtys[5];
+    int16_t  bid_price_offsets[5]; // Price offsets from anchor (fits in int16_t since kMaxPriceLevels=65536)
+    int16_t  ask_price_offsets[5];
     uint32_t anchor_price_low32;  // Lowest 32 bits of anchor or metadata
 };
 static_assert(sizeof(Top5BidsAsks) == 64, "Top5BidsAsks must be exactly 64 bytes for L2 cache alignment");
@@ -46,6 +47,13 @@ public:
     void modify_order(uint64_t order_id, uint32_t new_qty) noexcept;
     void cancel_order(uint64_t order_id) noexcept;
 
+    // Aggregate depth-stream mutation (Finding 19 resolution / design note 2026-09-13).
+    // Called by L1Consumer for each price-level entry in a parsed depthUpdate.
+    // Internally selects add_order / modify_order / cancel_order based on live
+    // order_lookup_ state — L1Consumer must NOT duplicate this decision.
+    // See SYNTHETIC ID COLLISION-SAFETY CONSTRAINT comment in lob_engine.cpp.
+    void upsert_synthetic_level(int64_t price, uint32_t qty, bool is_bid) noexcept;
+
     // Snapshot generation for L1 -> L2 IPC
     Top5BidsAsks generate_top5_snapshot() const noexcept;
 
@@ -54,7 +62,7 @@ private:
     int64_t index_to_price(int32_t index) const noexcept;
     
     // Internal node management
-    void link_node(int32_t price_index, OrderNode* node) noexcept;
+    void link_node(int32_t price_index, OrderNode* node, bool is_bid) noexcept;
     void unlink_node(OrderNode* node) noexcept;
 
     int64_t anchor_price_;
@@ -67,8 +75,9 @@ private:
         OrderNode* tail{nullptr};
     };
 
-    // Contiguous array of price levels
-    std::array<PriceLevel, kMaxPriceLevels> price_levels_;
+    // Contiguous array of price levels (physically split to prevent cross-book corruption)
+    std::array<PriceLevel, kMaxPriceLevels> bid_levels_;
+    std::array<PriceLevel, kMaxPriceLevels> ask_levels_;
 
     // Order lookup using flat array.
     // In an institutional system this is a dense open-addressed hash map or
