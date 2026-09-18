@@ -3,15 +3,15 @@
 //
 // Blueprint authority : EGBOS_MASTER.md Â§C1 (Data Ingestion Architecture, L0)
 //                       Lines 1503â€“1600
-// Specification refs  : S5-REQ-001 â†’ CLAIM-L3-05 V4 (jitter buffer sizing)
-//                       S5-REQ-002 â†’ CLAIM-L0-002 V4 (gap detection on live sequences)
+// Specification refs  : S5-REQ-001 -> P3 Ring HWM criterion (jitter buffer sizing)
+//                       S5-REQ-002 -> P1/P2 Gap+Stale criteria (gap detection on live sequences)
 //                       S5-REQ-005 â†’ Zero Order Path (no outbound FIX or ExecCommand)
 // Blueprint Â§C1.1     : "a feed validation harness must be constructible
 //                        without linking the execution plane"
 // Blueprint Â§C1.3     : "Any gap â€” defined as recv_seq != expected_seq â€”
 //                        triggers the gap handling state machine before any
 //                        downstream event is forwarded."
-// Verification class  : V4 â€” Empirical Validation (Blueprint Â§8, line 908)
+// Evidence class       : LOCAL_SYNTHETIC — simulation only
 //                       "measured on the specific hardware_id under realistic load"
 //
 // Constraints (enforced statically):
@@ -29,9 +29,9 @@
 //     Emits sequence-numbered datagrams at ~50k msg/s for kDurationSeconds.
 //     Deliberate fault injection:
 //       (1) Sequence gap every kGapDivisor datagrams (increments seq by 2).
-//           Simulates UDP datagram loss â€” the exact scenario CLAIM-L0-002 covers.
+//           Simulates UDP datagram loss â€” the gap-detection behavior under test.
 //       (2) Inter-packet sleep jitter [0, kMaxJitterNs] simulating bursty LAN/WAN
-//           delivery â€” the exact scenario CLAIM-L3-05 covers (buffer must absorb
+//           delivery â€” the burst/jitter buffer behavior under test (buffer must absorb
 //           bursts without overflow).
 //       (3) A deliberate kStalePauseMs pause at session midpoint (> kStaleThresholdNs
 //           500ms) â€” exercises the FEED_STALE branch of the Blueprint Â§C1.3 FSM.
@@ -48,9 +48,9 @@
 //     Tracks high-water mark to provide empirical buffer safety evidence.
 //
 // Pass conditions (all required):
-//   [P1] gap_detection_accuracy == 100%   â†’ CLAIM-L0-002 V4 (Blueprint Â§C1.3)
-//   [P2] stale_feed_detected == true      â†’ CLAIM-L0-002 V4 (FEED_STALE branch)
-//   [P3] ring_hwm_pct < 90%              â†’ CLAIM-L3-05 V4 (buffer not overwhelmed
+//   [P1] gap_detection_accuracy == 100%   â†’ P1 gap-detection criterion (Blueprint Â§C1.3)
+//   [P2] stale_feed_detected == true      â†’ P2 stale-detection criterion (FEED_STALE branch)
+//   [P3] ring_hwm_pct < 90%              â†’ P3 Ring HWM criterion (buffer not overwhelmed
 //                                          by jitter; 4096 exec ring is safe)
 //
 // Zero Order Path (S5-REQ-005):
@@ -276,7 +276,7 @@ static void publisher_thread(SharedState& state) {
 
         // â”€â”€ Gap injection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Every kGapDivisor-th datagram skips one seq number.
-        // Models UDP datagram loss â€” the exact trigger for CLAIM-L0-002.
+        // Models UDP datagram loss â€” the gap-detection trigger.
         if (iter % kGapDivisor == 0) {
             seq += 2; // skip seq (seq-1 sent, seq is the gap, seq+1 is next)
             state.gaps_injected.fetch_add(1, std::memory_order_relaxed);
@@ -599,20 +599,6 @@ static int write_results(const SharedState& state) {
         "    \"P1_gap_accuracy_100pct\": { \"result\": %s, \"value\": %.4f },\n"
         "    \"P2_stale_detected\":      { \"result\": %s },\n"
         "    \"P3_ring_hwm_lt_90pct\":   { \"result\": %s, \"value\": %.4f }\n"
-        "  },\n"
-        "  \"claim_upgrades\": {\n"
-        "    \"CLAIM-L3-05\": {\n"
-        "      \"previous_class\": \"V3\",\n"
-        "      \"new_class\": \"V4\",\n"
-        "      \"evidence\": \"ring_hwm_pct=%.4f (<%.0f%%)\",\n"
-        "      \"pass\": %s\n"
-        "    },\n"
-        "    \"CLAIM-L0-002\": {\n"
-        "      \"previous_class\": \"V3\",\n"
-        "      \"new_class\": \"V4\",\n"
-        "      \"evidence\": \"gap_accuracy=%.4f%%, stale=%s\",\n"
-        "      \"pass\": %s\n"
-        "    }\n"
         "  }\n"
         "}\n",
         // Top-level
@@ -637,13 +623,7 @@ static int write_results(const SharedState& state) {
         // pass_criteria
         p1_pass ? "true" : "false", gap_accuracy,
         p2_pass ? "true" : "false",
-        p3_pass ? "true" : "false", hwm_pct,
-        // CLAIM-L3-05
-        hwm_pct, static_cast<double>(kHwmCeilPct),
-        p3_pass ? "true" : "false",
-        // CLAIM-L0-002
-        gap_accuracy, stale ? "true" : "false",
-        (p1_pass && p2_pass) ? "true" : "false"
+        p3_pass ? "true" : "false", hwm_pct
     );
 
     if (f != stdout) std::fclose(f);
@@ -660,8 +640,8 @@ static int write_results(const SharedState& state) {
     std::fprintf(stderr, "  Ring HWM [P3]        : %llu/%zu slots (%.4f%%) %s\n",
         (unsigned long long)hwm, kMarketRingSlots, hwm_pct,
         p3_pass ? "PASS" : "FAIL");
-    std::fprintf(stderr, "  CLAIM-L3-05 V4       : %s\n", p3_pass ? "PASS" : "FAIL");
-    std::fprintf(stderr, "  CLAIM-L0-002 V4      : %s\n",
+    std::fprintf(stderr, "  P3 Ring HWM criterion       : %s\n", p3_pass ? "PASS" : "FAIL");
+    std::fprintf(stderr, "  P1/P2 Gap+Stale criteria      : %s\n",
         (p1_pass && p2_pass) ? "PASS" : "FAIL");
     std::fprintf(stderr, "=============================================\n");
 

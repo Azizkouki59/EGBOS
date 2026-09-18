@@ -15,9 +15,9 @@
 #                FEED_STALE transitions. SpscRing<65536> high-water mark tracked.
 #
 # Pass conditions (all must hold):
-#   gap_detection_accuracy = 100%   â†’ proves CLAIM-L0-002 V4
-#   stale_feed_detected    = true   â†’ proves staleness arm of CLAIM-L0-002 V4
-#   ring_hwm_pct           < 90%    â†’ proves CLAIM-L3-05 V4 (buffer never overwhelmed)
+#   gap_detection_accuracy = 100%   -> proves P1 gap-detection criterion
+#   stale_feed_detected    = true   -> proves P2 stale-detection criterion
+#   ring_hwm_pct           < 90%    -> proves P3 Ring HWM criterion (buffer never overwhelmed)
 #
 # Govcheck compliance:
 #   GC-E-010: no malloc/new on hot path (stack-allocated UDP buffer, static ring)
@@ -34,7 +34,7 @@ HARNESS_SRC="${REPO_ROOT}/scripts/s5_live_feed_harness.cpp"
 HARNESS_BIN="${REPO_ROOT}/build/s5_live_feed_harness"
 
 echo "=== EGBOS S5 Market Data Qualification Gate ==="
-echo "S5-INST-SPEC-001: CLAIM-L3-05 V4, CLAIM-L0-002 V4, S5-REQ-005 Zero Order Path"
+echo "S5-INST-SPEC-001: P1/P2/P3 synthetic market-data criteria + S5-REQ-005 boundary"
 
 mkdir -p "${ARTIFACT_DIR}"
 mkdir -p "$(dirname "${HARNESS_BIN}")"
@@ -98,20 +98,23 @@ with open('${ARTIFACT_PATH}') as f:
 
 status = d.get('status', 'UNKNOWN')
 m      = d.get('measurements', {})
-claims = d.get('claim_upgrades', {})
+pass_criteria = d.get('pass_criteria', {})
+p1 = pass_criteria.get('P1_gap_accuracy_100pct', {})
+p2 = pass_criteria.get('P2_stale_detected', {})
+p3 = pass_criteria.get('P3_ring_hwm_lt_90pct', {})
 
 gap_acc  = m.get('gap_detection_accuracy_pct', 0)
 stale    = m.get('stale_feed_detected', False)
 hwm_pct  = m.get('ring_hwm_pct', 100)
-l305_pass = claims.get('CLAIM-L3-05', {}).get('pass', False)
-l002_pass = claims.get('CLAIM-L0-002', {}).get('pass', False)
+l305_pass = p3.get('result', False)
+l002_pass = p1.get('result', False) and p2.get('result', False)
 
 print(f'  Status:                {status}')
 print(f'  Gap accuracy:          {gap_acc:.2f}%')
 print(f'  Stale detected:        {stale}')
 print(f'  Ring HWM pct:          {hwm_pct:.2f}%')
-print(f'  CLAIM-L3-05 V4:        {\"PASS\" if l305_pass else \"FAIL\"}')
-print(f'  CLAIM-L0-002 V4:       {\"PASS\" if l002_pass else \"FAIL\"}')
+print('  P3 Ring HWM criterion:        ' + ('PASS' if l305_pass else 'FAIL'))
+print('  P1/P2 Gap+Stale criteria:     ' + ('PASS' if l002_pass else 'FAIL'))
 
 if status != 'PASS':
     print(f'VERDICT: FAIL')
@@ -121,8 +124,9 @@ print(f'VERDICT: PASS')
 echo "${STATUS}"
 
 echo ""
-echo "S5 Gate: PASS"
+echo "S5 Simulation: PASS"
 echo "Artifact: ${ARTIFACT_PATH}"
 echo ""
-echo "Next step: Update CLAIM-L3-05 and CLAIM-L0-002 verification_class to V4."
+echo "No automatic claim promotion is performed by this pipeline."
+echo "CLAIM-L3-05 and CLAIM-L0-002 remain unchanged; governance approval is required for any class change."
 exit 0
