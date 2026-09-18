@@ -12,6 +12,7 @@
 #include "engine/l1/lob_engine.h"
 #include <array>
 #include <cstring>
+#include <memory>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
@@ -22,7 +23,8 @@ namespace {
 // This sequence must never change without a governance decision upgrading
 // the fixture (which would require a new V4 signing cycle).
 static egbos::l1::Top5BidsAsks run_canonical_sequence() noexcept {
-    egbos::l1::LobEngine engine(100000LL, 100LL);
+    auto engine_ptr = std::make_unique<egbos::l1::LobEngine>(100000LL, 100LL);
+    egbos::l1::LobEngine& engine = *engine_ptr;
     engine.add_order(1, 100100, 50, true);   // bid
     engine.add_order(2, 100200, 30, true);   // bid
     engine.add_order(3, 99900, 25, false);   // ask
@@ -113,7 +115,8 @@ TEST(LobDeterminismTest, CacheLineAlignment) {
 
 // ── Collision Resolution Invariant ──────────────────────────────────────────
 TEST(LobDeterminismTest, CollisionHandling) {
-    egbos::l1::LobEngine engine(100000LL, 100LL);
+    auto engine_ptr = std::make_unique<egbos::l1::LobEngine>(100000LL, 100LL);
+    egbos::l1::LobEngine& engine = *engine_ptr;
 
     // kMaxOrders is 131072.
     // We insert two orders that map to the same slot.

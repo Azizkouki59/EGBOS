@@ -11,6 +11,8 @@ namespace egbos::l1 {
 LobEngine::LobEngine(int64_t anchor_price, int64_t tick_size) noexcept
     : anchor_price_(anchor_price), tick_size_(tick_size) {
     order_lookup_.fill(nullptr);
+    std::memset(bid_levels_.data(), 0, sizeof(bid_levels_));
+    std::memset(ask_levels_.data(), 0, sizeof(ask_levels_));
 }
 
 int32_t LobEngine::price_to_index(int64_t price) const noexcept {
