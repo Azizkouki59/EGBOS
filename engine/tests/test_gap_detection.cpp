@@ -37,34 +37,40 @@ protected:
     }
 };
 
-TEST_F(GapDetectionTest, DetectsGapAndEmitsEvent) {
+// S2-REQ-002 (gap detection) is NOT implemented. process_payload() currently
+// forwards all payloads unconditionally with no sequence-number validation.
+// This test asserts that passthrough behavior explicitly so that a future
+// re-implementation of real gap detection will break it on purpose, forcing a
+// deliberate update rather than silently regressing.
+// See: Option-A passthrough patch, 2026-09-12. CLAIM-L0-002 remains at V3.
+// To re-implement: extract U/u update IDs from Binance JSON using a
+// zero-allocation parser (requires ADR approval per GC-E-010).
+TEST_F(GapDetectionTest, PassthroughAllPayloads_S2REQ002NotYetImplemented) {
     egbos::l0::FeedIngestor ingestor(&market_events, &gov_flags, tier0_fd);
-    
-    // Normal sequence (1)
-    uint8_t payload1[16] = {0};
-    uint64_t seq = 1;
-    std::memcpy(payload1, &seq, sizeof(seq));
-    ingestor.process_payload(payload1, 16, 12345);
-    
-    // Gap sequence (3) - Should emit GapEvent (S2-REQ-003)
-    uint8_t payload3[16] = {0};
-    seq = 3;
-    std::memcpy(payload3, &seq, sizeof(seq));
-    ingestor.process_payload(payload3, 16, 12345);
-    
+
+    // Send two valid JSON payloads that will be parsed by normalize_binance_depth
+    // Under Option-A passthrough, both must be forwarded unconditionally —
+    // no synthetic GAP_DETECTED event should be emitted between them.
+    std::string json1 = R"({"e":"depthUpdate","U":1,"u":2,"b":[["1.0","10"]],"a":[]})";
+    std::string json3 = R"({"e":"depthUpdate","U":3,"u":4,"b":[["1.0","10"]],"a":[]})";
+
+    ingestor.process_payload(reinterpret_cast<const uint8_t*>(json1.data()), json1.size(), 12345);
+    ingestor.process_payload(reinterpret_cast<const uint8_t*>(json3.data()), json3.size(), 12345);
+
     egbos::shm::MarketEventSlot slot;
-    
-    // 1. Seq 1
-    ASSERT_TRUE(market_events.pop(slot));
-    
-    // 2. Gap Event
-    ASSERT_TRUE(market_events.pop(slot));
-    EXPECT_EQ(slot.data[0], 0xFF);
-    EXPECT_EQ(slot.data[1], 1); // GAP marker
-    
-    // 3. Seq 3
-    ASSERT_TRUE(market_events.pop(slot));
+
+    // Exactly 2 real-data slots — no synthetic gap event between them.
+    ASSERT_TRUE(market_events.pop(slot)) << "First payload was not forwarded";
+    EXPECT_NE(slot.data[0], 0xFF) << "First slot must not be a synthetic event";
+
+    ASSERT_TRUE(market_events.pop(slot)) << "Second payload was not forwarded";
+    EXPECT_NE(slot.data[0], 0xFF) << "Second slot must not be a synthetic event";
+
+    // Ring must be empty — no spurious gap event was emitted.
+    EXPECT_FALSE(market_events.pop(slot))
+        << "Unexpected event in ring: gap detection should be a no-op (S2-REQ-002 DEFERRED)";
 }
+
 
 TEST_F(GapDetectionTest, DetectsStalenessAndEmitsEvent) {
     egbos::l0::FeedIngestor ingestor(&market_events, &gov_flags, tier0_fd);
@@ -72,11 +78,9 @@ TEST_F(GapDetectionTest, DetectsStalenessAndEmitsEvent) {
     // Must initialize last_recv_time_ns_ internally first
     ingestor.check_staleness(0);
     
-    // Mock internal tracker by processing a payload
-    uint8_t payload[16] = {0};
-    uint64_t seq = 1;
-    std::memcpy(payload, &seq, sizeof(seq));
-    ingestor.process_payload(payload, 16, 12345);
+    // Mock internal tracker by processing a valid payload
+    std::string json = R"({"e":"depthUpdate","U":1,"u":2,"b":[["1.0","10"]],"a":[]})";
+    ingestor.process_payload(reinterpret_cast<const uint8_t*>(json.data()), json.size(), 12345);
     
     // Fast forward past 500ms
     uint64_t future_time = 600000000ULL; // 600ms

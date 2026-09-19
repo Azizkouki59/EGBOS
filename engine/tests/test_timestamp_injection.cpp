@@ -41,15 +41,17 @@ protected:
 TEST_F(TimestampInjectionTest, InjectTimestampAndVerifyABI) {
     egbos::l0::FeedIngestor ingestor(&market_events, &gov_flags, tier0_fd);
 
-    // Wire packet stub (8 bytes seq + 16 bytes payload)
-    uint8_t payload[24] = {0};
-    uint64_t seq = 1;
-    std::memcpy(payload, &seq, sizeof(uint64_t));
+    // Provide valid Binance @depth JSON so the L0 normalizer emits an event.
+    const char* json_payload =
+        "{\"e\":\"depthUpdate\",\"U\":1,\"u\":1,"
+        "\"b\":[[\"1.0\",\"1.0\"]],\"a\":[]}";
+    const uint8_t* payload = reinterpret_cast<const uint8_t*>(json_payload);
+    size_t payload_len = std::strlen(json_payload);
 
     // The timestamp we want to inject
     uint64_t rx_timestamp_ns = 9876543210ULL;
 
-    ingestor.process_payload(payload, sizeof(payload), rx_timestamp_ns);
+    ingestor.process_payload(payload, payload_len, rx_timestamp_ns);
 
     // Verify it was pushed to SPSC
     egbos::shm::MarketEventSlot slot;
@@ -71,12 +73,15 @@ TEST_F(TimestampInjectionTest, InjectTimestampAndVerifyABI) {
 TEST_F(TimestampInjectionTest, StaleDetectionUsesInjectedTimestamp) {
     egbos::l0::FeedIngestor ingestor(&market_events, &gov_flags, tier0_fd);
 
-    uint8_t payload[24] = {0};
-    uint64_t seq = 1;
-    std::memcpy(payload, &seq, sizeof(uint64_t));
+    // Provide valid Binance @depth JSON so the L0 normalizer emits an event.
+    const char* json_payload =
+        "{\"e\":\"depthUpdate\",\"U\":1,\"u\":1,"
+        "\"b\":[[\"1.0\",\"1.0\"]],\"a\":[]}";
+    const uint8_t* payload = reinterpret_cast<const uint8_t*>(json_payload);
+    size_t payload_len = std::strlen(json_payload);
 
     uint64_t rx_timestamp_ns = 1000000000ULL; // 1 second
-    ingestor.process_payload(payload, sizeof(payload), rx_timestamp_ns);
+    ingestor.process_payload(payload, payload_len, rx_timestamp_ns);
 
     egbos::shm::MarketEventSlot slot;
     ASSERT_TRUE(market_events.pop(slot)); // consume normal event

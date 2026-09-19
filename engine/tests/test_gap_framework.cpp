@@ -6,27 +6,15 @@
 // Classification      : LOCAL_SYNTHETIC  (never LIVE_OPERATIONAL)
 // Source revision     : 2663389
 //
-// PURPOSE:
-//   Provide a deterministic, offline test framework for validating the gap-detection
-//   and staleness-emission logic in FeedIngestor.
-//
-// CRITICAL LIMITATION — READ BEFORE USING THIS FRAMEWORK:
-//   All tests in this file use SYNTHETIC, LOCALLY GENERATED sequence streams.
-//   Gaps are injected programmatically, not observed from a physical exchange feed.
-//
-//   THEREFORE:
-//     - Gap detection logic is VALIDATED (code is correct)
-//     - Gap detection is NOT PROVEN against a live exchange feed
-//   Stale detection uses last_recv_time_ns_, now initialized to 0 (no-packet-received
-//   sentinel) and updated with a CLOCK_MONOTONIC_RAW timestamp injected by the CQE
-//   caller in live_feed_listener.cpp. In these tests, the timestamp is injected
-//   synthetically per test to maintain determinism.
-//
-//   V4 promotion of CLAIM-L0-002 requires LIVE_OPERATIONAL evidence:
-//     - Physical exchange feed connection (not UDP loopback)
-//     - Real exchange sequence numbers observed
-//     - Hardware-clock timestamps (not mock values)
-//     - PCAP capture for sequence provenance
+// S2-REQ-002 STATUS: NOT IMPLEMENTED (2026-09-12)
+//   Gap detection requires extracting U/u update IDs from Binance JSON.
+//   The previous 8-byte binary sequence-prefix stub (Finding 7, 2026-09-12 audit)
+//   was removed. process_payload() now forwards all payloads unconditionally.
+//   Tests that previously asserted gap-event emission are rewritten to assert
+//   passthrough behavior explicitly. They will break on purpose when real
+//   JSON-aware gap detection is added, forcing a deliberate update.
+//   To re-implement: zero-allocation JSON parser for U/u extraction (ADR required).
+//   CLAIM-L0-002 remains at V3.
 //
 
 //
@@ -58,10 +46,20 @@
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Build a minimal 16-byte payload: [8-byte seq_num | 8-byte zeros]
-static void make_payload(uint8_t* buf, uint64_t seq) {
-    std::memset(buf, 0, 16);
-    std::memcpy(buf, &seq, sizeof(seq));
+// Helper: build a minimal payload starting with '{' (0x7b) so it looks like
+// the real Binance JSON wire format that process_payload() now receives.
+// The remaining bytes encode an identifying marker for test differentiation.
+static size_t make_payload(uint8_t* buf, uint64_t seq) {
+    char json_str[128];
+    int len = snprintf(
+        json_str,
+        sizeof(json_str),
+        "{\"e\":\"depthUpdate\",\"U\":%llu,\"u\":%llu,"
+        "\"b\":[[\"1.0\",\"1.0\"]],\"a\":[]}",
+        (unsigned long long)seq,
+        (unsigned long long)seq);
+    memcpy(buf, json_str, len);
+    return len;
 }
 
 // ── Fixture ───────────────────────────────────────────────────────────────────
@@ -85,117 +83,92 @@ protected:
     }
 };
 
-// ── Test A: Deterministic gap in controlled sequence ─────────────────────────
+// S2-REQ-002 (gap detection) is NOT implemented. process_payload() forwards
+// all payloads unconditionally — no sequence validation, no gap events.
+// Tests A, B, C, F below assert this passthrough behavior explicitly.
+// They will break on purpose when real JSON gap detection is re-implemented,
+// forcing a deliberate update. See: Option-A patch 2026-09-12.
+
+// ── Test A: Passthrough with sequence gap input ───────────────────────────────
 //
-// Input sequence : 1, 2, 3, 5  (FeedIngestor initializes expected_seq_=1)
-// Expected gap   : 4 is missing
-// Expected events:
-//   slot(0) = normalized payload for seq 1
-//   slot(1) = normalized payload for seq 2
-//   slot(2) = normalized payload for seq 3
-//   slot(3) = GapEvent (synthetic marker 0xFF, type=1)  ← gap before 5
-//   slot(4) = normalized payload for seq 5
-//
-// NOTE: Sequences are 1-based to match FeedIngestor constructor (expected_seq_=1).
-// Using 1001-based sequences would trigger a spurious gap (1 → 1001).
-// The gap detection logic is identical; only the numeric range changes.
+// Old behavior: seq 1,2,3,5 → 3 normal slots + GapEvent + 1 normal = 5 events
+// New behavior: all 4 payloads forwarded → 4 normal slots, no gap event.
 //
 // Classification: LOCAL_SYNTHETIC
-// This test does NOT prove physical exchange-feed gap detection.
-TEST_F(GapFrameworkTest, DetectsGap_1004_Missing) {
+TEST_F(GapFrameworkTest, DetectsGap_1004_Missing_S2REQ002NotYetImplemented) {
     auto ingestor = make_ingestor();
-    uint8_t payload[16];
+    uint8_t payload[128]{};
 
-    // Feed seq 1, 2, 3 — no gap
-    for (uint64_t seq : {1ULL, 2ULL, 3ULL}) {
-        make_payload(payload, seq);
-        ingestor.process_payload(payload, sizeof(payload), 12345);
+    // Feed seq 1, 2, 3, 5 (4 would be the gap under old logic)
+    for (uint64_t seq : {1ULL, 2ULL, 3ULL, 5ULL}) {
+        size_t len = make_payload(payload, seq);
+        ingestor.process_payload(payload, len, 12345);
     }
-
-    // Feed seq 5 — gap: 4 is missing
-    make_payload(payload, 5ULL);
-    ingestor.process_payload(payload, sizeof(payload), 12345);
 
     egbos::shm::MarketEventSlot slot;
 
-    // Drain: seq 1001, 1002, 1003 → 3 normal slots
-    for (int i = 0; i < 3; ++i) {
+    // All 4 payloads forwarded, no gap event emitted.
+    for (int i = 0; i < 4; ++i) {
         ASSERT_TRUE(market_events_.pop(slot))
-            << "Expected normal slot " << (i + 1) << " missing";
-        // Normal slots: byte[0] != 0xFF
+            << "Expected normal slot " << (i + 1) << " missing — passthrough broken";
         EXPECT_NE(slot.data[0], 0xFF)
-            << "Slot " << i << " incorrectly classified as synthetic";
+            << "Slot " << i << " is synthetic (0xFF) — gap detection fired unexpectedly (S2-REQ-002 DEFERRED)";
     }
 
-    // GapEvent must be the NEXT slot (emitted before seq 1005)
-    ASSERT_TRUE(market_events_.pop(slot))
-        << "GapEvent not emitted after sequence gap (1004 missing)";
-    EXPECT_EQ(slot.data[0], 0xFF) << "GapEvent: expected synthetic marker 0xFF";
-    EXPECT_EQ(slot.data[1], 1)    << "GapEvent: expected event_type=1 (GAP)";
-
-    // seq 1005 normalized slot follows
-    ASSERT_TRUE(market_events_.pop(slot))
-        << "Normalized slot for seq 1005 not emitted";
-    EXPECT_NE(slot.data[0], 0xFF)
-        << "Slot for seq 1005 incorrectly classified as synthetic";
-
-    // No further events
+    // Ring must be empty — no synthetic gap event.
     EXPECT_FALSE(market_events_.pop(slot))
-        << "Unexpected extra event in ring";
+        << "Extra event in ring: gap detection should be a no-op (S2-REQ-002 DEFERRED)";
 }
 
-// ── Test B: Gap size = 1 (adjacent skip) ─────────────────────────────────────
-TEST_F(GapFrameworkTest, DetectsGap_SingleMissing) {
+// ── Test B: Adjacent-skip passthrough ────────────────────────────────────────
+TEST_F(GapFrameworkTest, DetectsGap_SingleMissing_S2REQ002NotYetImplemented) {
     auto ingestor = make_ingestor();
-    uint8_t payload[16];
+    uint8_t payload[128]{};
 
-    make_payload(payload, 1ULL);
-    ingestor.process_payload(payload, sizeof(payload), 12345);
+    size_t len = make_payload(payload, 1ULL);
+    ingestor.process_payload(payload, len, 12345);
 
-    // seq 3 — skips 2
-    make_payload(payload, 3ULL);
-    ingestor.process_payload(payload, sizeof(payload), 12345);
+    len = make_payload(payload, 3ULL); // seq 2 would have been a gap
+    ingestor.process_payload(payload, len, 12345);
 
     egbos::shm::MarketEventSlot slot;
-    ASSERT_TRUE(market_events_.pop(slot)); // seq 1
-    ASSERT_TRUE(market_events_.pop(slot)); // GapEvent
-    EXPECT_EQ(slot.data[0], 0xFF);
-    EXPECT_EQ(slot.data[1], 1);
-    ASSERT_TRUE(market_events_.pop(slot)); // seq 3
-    EXPECT_FALSE(market_events_.pop(slot));
+    // Both forwarded, no gap event.
+    ASSERT_TRUE(market_events_.pop(slot));
+    EXPECT_NE(slot.data[0], 0xFF);
+    ASSERT_TRUE(market_events_.pop(slot));
+    EXPECT_NE(slot.data[0], 0xFF);
+    EXPECT_FALSE(market_events_.pop(slot))
+        << "Unexpected extra event (S2-REQ-002 DEFERRED)";
 }
 
-// ── Test C: Gap size > 1 (multi-packet loss) ─────────────────────────────────
-// Uses seq [1,6]: skips 2,3,4,5 (4 packets lost).
-// Starting at 1 to match expected_seq_=1 in FeedIngestor constructor.
-TEST_F(GapFrameworkTest, DetectsGap_MultiMissing) {
+// ── Test C: Multi-packet-loss passthrough ─────────────────────────────────────
+TEST_F(GapFrameworkTest, DetectsGap_MultiMissing_S2REQ002NotYetImplemented) {
     auto ingestor = make_ingestor();
-    uint8_t payload[16];
+    uint8_t payload[128]{};
 
-    make_payload(payload, 1ULL);
-    ingestor.process_payload(payload, sizeof(payload), 12345);
+    size_t len = make_payload(payload, 1ULL);
+    ingestor.process_payload(payload, len, 12345);
 
-    // seq 6 — skips 2,3,4,5 (4 packets lost)
-    make_payload(payload, 6ULL);
-    ingestor.process_payload(payload, sizeof(payload), 12345);
+    len = make_payload(payload, 6ULL); // skips 2,3,4,5
+    ingestor.process_payload(payload, len, 12345);
 
     egbos::shm::MarketEventSlot slot;
-    ASSERT_TRUE(market_events_.pop(slot)); // seq 1
-    ASSERT_TRUE(market_events_.pop(slot)); // GapEvent
-    EXPECT_EQ(slot.data[0], 0xFF);
-    EXPECT_EQ(slot.data[1], 1);
-    ASSERT_TRUE(market_events_.pop(slot)); // seq 6
-    EXPECT_FALSE(market_events_.pop(slot));
+    ASSERT_TRUE(market_events_.pop(slot));
+    EXPECT_NE(slot.data[0], 0xFF);
+    ASSERT_TRUE(market_events_.pop(slot));
+    EXPECT_NE(slot.data[0], 0xFF);
+    EXPECT_FALSE(market_events_.pop(slot))
+        << "Unexpected extra event (S2-REQ-002 DEFERRED)";
 }
 
 // ── Test D: No gap in ordered sequence ───────────────────────────────────────
 TEST_F(GapFrameworkTest, NoGap_OrderedSequence) {
     auto ingestor = make_ingestor();
-    uint8_t payload[16];
+    uint8_t payload[128]{};
 
     for (uint64_t seq = 1; seq <= 10; ++seq) {
-        make_payload(payload, seq);
-        ingestor.process_payload(payload, sizeof(payload), 12345);
+        size_t len = make_payload(payload, seq);
+        ingestor.process_payload(payload, len, 12345);
     }
 
     egbos::shm::MarketEventSlot slot;
@@ -208,45 +181,38 @@ TEST_F(GapFrameworkTest, NoGap_OrderedSequence) {
     EXPECT_EQ(normal_count, 10) << "Expected exactly 10 normal slots";
 }
 
-// ── Test F: Duplicate and Out-of-order sequences ─────────────────────────────
-// Input: 1, 2, 2 (duplicate), 1 (out of order).
-// Existing contract (ingestor.cpp line 78): Drop late/duplicate packets.
-TEST_F(GapFrameworkTest, DropsDuplicateAndOutOfOrder) {
+// ── Test F: All payloads forwarded regardless of sequence ─────────────────────
+// Old contract: seq 1,2 forwarded; duplicate seq 2 and out-of-order seq 1 dropped.
+// New contract: ALL non-empty payloads forwarded unconditionally (S2-REQ-002 DEFERRED).
+// This test will break when real gap detection is implemented.
+TEST_F(GapFrameworkTest, DropsDuplicateAndOutOfOrder_S2REQ002NotYetImplemented) {
     auto ingestor = make_ingestor();
-    uint8_t payload[16];
+    uint8_t payload[128]{};
 
-    // seq 1, 2
-    for (uint64_t seq : {1ULL, 2ULL}) {
-        make_payload(payload, seq);
-        ingestor.process_payload(payload, sizeof(payload), 12345);
+    // seq 1, 2, duplicate seq 2, out-of-order seq 1 — all 4 forwarded under passthrough
+    for (uint64_t seq : {1ULL, 2ULL, 2ULL, 1ULL}) {
+        size_t len = make_payload(payload, seq);
+        ingestor.process_payload(payload, len, 12345);
     }
-
-    // duplicate seq 2
-    make_payload(payload, 2ULL);
-    ingestor.process_payload(payload, sizeof(payload), 12345);
-
-    // out-of-order seq 1
-    make_payload(payload, 1ULL);
-    ingestor.process_payload(payload, sizeof(payload), 12345);
 
     egbos::shm::MarketEventSlot slot;
 
-    // We should only receive 2 normalized slots (1 and 2), no synthetic gaps.
-    ASSERT_TRUE(market_events_.pop(slot));
-    EXPECT_NE(slot.data[0], 0xFF);
-
-    ASSERT_TRUE(market_events_.pop(slot));
-    EXPECT_NE(slot.data[0], 0xFF);
-
+    // All 4 forwarded — no filtering, no synthetic events.
+    for (int i = 0; i < 4; ++i) {
+        ASSERT_TRUE(market_events_.pop(slot))
+            << "Slot " << i << " missing — passthrough dropped a payload unexpectedly";
+        EXPECT_NE(slot.data[0], 0xFF)
+            << "Slot " << i << " is synthetic — gap detection fired (S2-REQ-002 DEFERRED)";
+    }
     EXPECT_FALSE(market_events_.pop(slot))
-        << "Duplicate/out-of-order packets were not dropped";
+        << "Extra event in ring beyond the 4 forwarded payloads";
 }
 
 // ── Test E: Deterministic replay invariant ────────────────────────────────────
 // Feed the same sequence twice; the resulting event streams must be identical.
 // This validates the determinism property required by S5-REQ-004's replay proof.
 TEST_F(GapFrameworkTest, DeterministicReplay_SameInputSameOutput) {
-    uint8_t payload[16];
+    uint8_t payload[128]{};
     const uint64_t sequences[] = {1001, 1002, 1003, 1005};
 
     // Run 1
@@ -258,8 +224,8 @@ TEST_F(GapFrameworkTest, DeterministicReplay_SameInputSameOutput) {
         ASSERT_GE(fd1, 0);
         egbos::l0::FeedIngestor ingestor1(&ring1, &flags1, fd1);
         for (auto seq : sequences) {
-            make_payload(payload, seq);
-            ingestor1.process_payload(payload, sizeof(payload), 12345);
+            size_t len = make_payload(payload, seq);
+            ingestor1.process_payload(payload, len, 12345);
         }
 
         // Drain run 1
@@ -279,8 +245,8 @@ TEST_F(GapFrameworkTest, DeterministicReplay_SameInputSameOutput) {
         ASSERT_GE(fd2, 0);
         egbos::l0::FeedIngestor ingestor2(&ring2, &flags2, fd2);
         for (auto seq : sequences) {
-            make_payload(payload, seq);
-            ingestor2.process_payload(payload, sizeof(payload), 12345);
+            size_t len = make_payload(payload, seq);
+            ingestor2.process_payload(payload, len, 12345);
         }
 
         egbos::shm::MarketEventSlot s2;
@@ -317,10 +283,9 @@ TEST_F(GapFrameworkTest, ClockContract_FirstPacketInitializesTimestamp) {
 
     // Send first packet with a synthetic D4 timestamp.
     constexpr uint64_t kFirstTs = 100'000'000ULL; // 100ms boot-relative
-    uint8_t payload[24] = {0};
-    uint64_t seq = 1;
-    std::memcpy(payload, &seq, sizeof(uint64_t));
-    ingestor.process_payload(payload, sizeof(payload), kFirstTs);
+    uint8_t payload[128]{};
+    size_t len = make_payload(payload, 1ULL);
+    ingestor.process_payload(payload, len, kFirstTs);
 
     // Consume the normal event.
     ASSERT_TRUE(market_events_.pop(slot));
@@ -337,10 +302,9 @@ TEST_F(GapFrameworkTest, ClockContract_TimestampIsNonZeroAfterFirstPacket) {
     constexpr uint64_t kFirstTs = 1'000'000'000ULL; // 1s
     constexpr uint64_t kNowTs   = kFirstTs + 600'000'000ULL; // 1.6s > 500ms
 
-    uint8_t payload[24] = {0};
-    uint64_t seq = 1;
-    std::memcpy(payload, &seq, sizeof(uint64_t));
-    ingestor.process_payload(payload, sizeof(payload), kFirstTs);
+    uint8_t payload[128]{};
+    size_t len = make_payload(payload, 1ULL);
+    ingestor.process_payload(payload, len, kFirstTs);
 
     egbos::shm::MarketEventSlot slot;
     ASSERT_TRUE(market_events_.pop(slot)); // consume normal event
@@ -356,15 +320,15 @@ TEST_F(GapFrameworkTest, ClockContract_MonotonicTimestampsNoSpuriousStale) {
     // Successive packets with monotonically increasing timestamps must not
     // trigger stale detection between packets.
     auto ingestor = make_ingestor();
-    uint8_t payload[24] = {0};
+    uint8_t payload[128]{};
     constexpr uint64_t kBase = 500'000'000ULL;
     egbos::shm::MarketEventSlot slot;
 
     for (uint64_t i = 0; i < 5; ++i) {
         uint64_t seq = i + 1;
-        std::memcpy(payload, &seq, sizeof(uint64_t));
+        size_t len = make_payload(payload, seq);
         uint64_t ts = kBase + i * 10'000'000ULL; // +10ms each
-        ingestor.process_payload(payload, sizeof(payload), ts);
+        ingestor.process_payload(payload, len, ts);
         ASSERT_TRUE(market_events_.pop(slot)); // consume normal event
         // Check staleness at exact receive time: must NOT be stale.
         ingestor.check_staleness(ts);

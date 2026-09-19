@@ -39,6 +39,7 @@
 #include "engine/l0/ingestor.h"
 #include "engine/core/shm_layout.h"
 #include <cstring>
+#include <string>
 #include <fcntl.h>
 #include <unistd.h>
 #include <cstdint>
@@ -63,9 +64,15 @@ static uint8_t  g_tier0_buf[128 * 16];
 static size_t   g_tier0_written = 0;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-static void build_payload(uint8_t* buf, size_t bufsz, uint64_t seq) {
-    std::memset(buf, 0, bufsz);
-    std::memcpy(buf, &seq, sizeof(seq));
+static size_t build_payload(uint8_t* buf, size_t bufsz, uint64_t seq) {
+    std::string json_payload =
+        "{\"e\":\"depthUpdate\",\"U\":" + std::to_string(seq) +
+        ",\"u\":" + std::to_string(seq) +
+        ",\"b\":[[\"1.0\",\"1.0\"]],\"a\":[]}";
+    size_t len = json_payload.size();
+    if (len >= bufsz) return 0;
+    std::memcpy(buf, json_payload.data(), len);
+    return len;
 }
 
 // Read ingestion_tsc_ from raw slot bytes (little-endian; offset 24).
@@ -110,11 +117,11 @@ TEST_F(ReplayTimestampDeterminismTest, InjectedTimestampPersistedToSlot) {
 
     constexpr uint64_t T1 = 7'000'000'000ULL;  // 7 seconds, synthetic
 
-    uint8_t payload[24]{};
+    uint8_t payload[64]{};
     uint64_t seq = 1;
-    build_payload(payload, sizeof(payload), seq);
+    size_t len = build_payload(payload, sizeof(payload), seq);
 
-    ingestor.process_payload(payload, sizeof(payload), T1);
+    ingestor.process_payload(payload, len, T1);
 
     egbos::shm::MarketEventSlot slot{};
     ASSERT_TRUE(market_events_.pop(slot)) << "Expected one slot in SPSC";
@@ -132,9 +139,9 @@ TEST_F(ReplayTimestampDeterminismTest, ReplayedTimestampEqualsPersistedTimestamp
     egbos::l0::FeedIngestor live_ingestor(&market_events_, &gov_flags_, tier0_fd_);
 
     constexpr uint64_t T1 = 7'000'000'000ULL;
-    uint8_t payload[24]{};
-    build_payload(payload, sizeof(payload), 1ULL);
-    live_ingestor.process_payload(payload, sizeof(payload), T1);
+    uint8_t payload[64]{};
+    size_t len = build_payload(payload, sizeof(payload), 1ULL);
+    live_ingestor.process_payload(payload, len, T1);
 
     egbos::shm::MarketEventSlot tier0_record{};
     ASSERT_TRUE(market_events_.pop(tier0_record));
@@ -158,9 +165,9 @@ TEST_F(ReplayTimestampDeterminismTest, ReplayDoesNotDependOnLocalClock) {
     constexpr uint64_t T_HISTORICAL = 1'000'000'000ULL;  // 1 second epoch-equivalent
     constexpr uint64_t STALE_THRESHOLD = 500'000'000ULL; // 500ms (matches kStaleThresholdNs)
 
-    uint8_t payload[24]{};
-    build_payload(payload, sizeof(payload), 1ULL);
-    live_ingestor.process_payload(payload, sizeof(payload), T_HISTORICAL);
+    uint8_t payload[64]{};
+    size_t len = build_payload(payload, sizeof(payload), 1ULL);
+    live_ingestor.process_payload(payload, len, T_HISTORICAL);
 
     egbos::shm::MarketEventSlot tier0_record{};
     ASSERT_TRUE(market_events_.pop(tier0_record));  // consume normal event
@@ -179,8 +186,8 @@ TEST_F(ReplayTimestampDeterminismTest, ReplayDoesNotDependOnLocalClock) {
     egbos::l0::FeedIngestor replay_ingestor(replay_events.get(), &gov_flags_, tier0_fd_);
 
     // Feed the event with its historical T1 (as if re-ingesting from Tier-0)
-    build_payload(payload, sizeof(payload), 1ULL);
-    replay_ingestor.process_payload(payload, sizeof(payload), T1);
+    len = build_payload(payload, sizeof(payload), 1ULL);
+    replay_ingestor.process_payload(payload, len, T1);
 
     egbos::shm::MarketEventSlot consumed{};
     ASSERT_TRUE(replay_events->pop(consumed)); // consume the normal event
@@ -207,9 +214,9 @@ TEST_F(ReplayTimestampDeterminismTest, LiveDecisionEqualsReplayDecision) {
         auto ev = std::make_unique<egbos::shm::MarketEventsRegion>();
         std::memset(ev.get(), 0, sizeof(*ev));
         egbos::l0::FeedIngestor ing(ev.get(), &gov_flags_, tier0_fd_);
-        uint8_t buf[24]{};
-        build_payload(buf, sizeof(buf), 1ULL);
-        ing.process_payload(buf, sizeof(buf), ts_to_inject);
+        uint8_t buf[64]{};
+        size_t len = build_payload(buf, sizeof(buf), 1ULL);
+        ing.process_payload(buf, len, ts_to_inject);
         egbos::shm::MarketEventSlot s{};
         ev->pop(s); // consume normal event
         ing.check_staleness(STALE_HORIZON);
@@ -224,9 +231,9 @@ TEST_F(ReplayTimestampDeterminismTest, LiveDecisionEqualsReplayDecision) {
         auto ev = std::make_unique<egbos::shm::MarketEventsRegion>();
         std::memset(ev.get(), 0, sizeof(*ev));
         egbos::l0::FeedIngestor ing(ev.get(), &gov_flags_, tier0_fd_);
-        uint8_t buf[24]{};
-        build_payload(buf, sizeof(buf), 1ULL);
-        ing.process_payload(buf, sizeof(buf), T1);
+        uint8_t buf[64]{};
+        size_t len = build_payload(buf, sizeof(buf), 1ULL);
+        ing.process_payload(buf, len, T1);
         egbos::shm::MarketEventSlot s{};
         ev->pop(s);
         return s;

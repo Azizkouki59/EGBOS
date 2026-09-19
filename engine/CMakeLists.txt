@@ -17,6 +17,7 @@ target_link_libraries(engine_placeholder INTERFACE schemas_lib)
 # â”€â”€ L0 Compiled target â”€â”€
 # D6 (io_uring) requires compiled object code for the listener.
 add_library(engine_l0 STATIC
+    l0/binance_json_normalizer.cpp
     l0/ingestor.cpp
     l0/live_feed_listener.cpp
     l0/binance_feed_listener.cpp

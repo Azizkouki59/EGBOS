@@ -42,17 +42,17 @@ endif()
 
 # ── S2 Targets (L0, L1) ──
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  add_executable(test_gap_detection test_gap_detection.cpp ../l0/ingestor.cpp)
+  add_executable(test_gap_detection test_gap_detection.cpp ../l0/ingestor.cpp ../l0/binance_json_normalizer.cpp)
   target_link_libraries(test_gap_detection PRIVATE engine_core GTest::gtest GTest::gtest_main flatbuffers)
   target_compile_features(test_gap_detection PRIVATE cxx_std_20)
   gtest_discover_tests(test_gap_detection)
 
-  add_executable(test_lob_determinism test_lob_determinism.cpp ../l1/lob_engine.cpp ../l0/ingestor.cpp)
+  add_executable(test_lob_determinism test_lob_determinism.cpp ../l1/lob_engine.cpp ../l0/ingestor.cpp ../l0/binance_json_normalizer.cpp)
   target_link_libraries(test_lob_determinism PRIVATE engine_core GTest::gtest GTest::gtest_main flatbuffers)
   target_compile_features(test_lob_determinism PRIVATE cxx_std_20)
   gtest_discover_tests(test_lob_determinism)
 
-  add_executable(test_lob_fuzz test_lob_fuzz.cpp ../l1/lob_engine.cpp ../l0/ingestor.cpp)
+  add_executable(test_lob_fuzz test_lob_fuzz.cpp ../l1/lob_engine.cpp ../l0/ingestor.cpp ../l0/binance_json_normalizer.cpp)
   target_link_libraries(test_lob_fuzz PRIVATE engine_core GTest::gtest GTest::gtest_main flatbuffers)
   target_compile_features(test_lob_fuzz PRIVATE cxx_std_20)
 
@@ -70,7 +70,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   # ── S5 Step 2 Evidence Infrastructure Tests ──────────────────────────────────
   # S5-REQ-002: Offline deterministic gap-detection framework.
   # Links ingestor.cpp (read-only; ingestor.cpp is NOT modified by this task).
-  add_executable(test_gap_framework test_gap_framework.cpp ../l0/ingestor.cpp)
+  add_executable(test_gap_framework test_gap_framework.cpp ../l0/ingestor.cpp ../l0/binance_json_normalizer.cpp)
   target_link_libraries(test_gap_framework PRIVATE engine_core GTest::gtest GTest::gtest_main flatbuffers)
   target_compile_features(test_gap_framework PRIVATE cxx_std_20)
   gtest_discover_tests(test_gap_framework)
@@ -96,13 +96,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 
   # S5-REQ-002: Timestamp injection unit tests.
   # Classification: LOCAL_SYNTHETIC
-  add_executable(test_timestamp_injection test_timestamp_injection.cpp ../l0/ingestor.cpp)
+  add_executable(test_timestamp_injection test_timestamp_injection.cpp ../l0/ingestor.cpp ../l0/binance_json_normalizer.cpp)
   target_link_libraries(test_timestamp_injection PRIVATE engine_core GTest::gtest GTest::gtest_main flatbuffers)
   target_compile_features(test_timestamp_injection PRIVATE cxx_std_20)
   gtest_discover_tests(test_timestamp_injection)
 
   # S5-REQ-002: End-to-End Timestamp Determinism Proof.
-  add_executable(test_replay_timestamp_determinism test_replay_timestamp_determinism.cpp ../l0/ingestor.cpp)
+  add_executable(test_replay_timestamp_determinism test_replay_timestamp_determinism.cpp ../l0/ingestor.cpp ../l0/binance_json_normalizer.cpp)
   target_link_libraries(test_replay_timestamp_determinism PRIVATE engine_core GTest::gtest GTest::gtest_main flatbuffers)
   target_compile_features(test_replay_timestamp_determinism PRIVATE cxx_std_20)
   gtest_discover_tests(test_replay_timestamp_determinism)

@@ -6,7 +6,6 @@
 
 #include "ingestor.h"
 #include <cstring>
-#include <algorithm>
 #if defined(_WIN32)
 // DEVELOPMENT/TEST ONLY — NOT TIER-0
 #include <io.h>
@@ -34,47 +33,45 @@ FeedIngestor::FeedIngestor(
       gov_flags_(gov_flags),
       tier0_fd_(tier0_fd),
       current_state_(FeedState::FEED_NORMAL),
-      expected_seq_(1),
       last_recv_time_ns_(0) {}
 
+
 void FeedIngestor::process_payload(const uint8_t* payload, std::size_t length, uint64_t rx_timestamp_ns) noexcept {
-    // Network framing stub: Assume 8-byte sequence number followed by payload
-    if (length < sizeof(uint64_t)) [[unlikely]] {
+    // OPTION-A PASSTHROUGH (2026-09-12):
+    // The Binance JSON WebSocket protocol does NOT prefix frames with an
+    // 8-byte binary sequence number. The previous stub was silently stripping
+    // the first 8 bytes of every JSON message (e.g. consuming "depthUpd"
+    // from "{\"e\":\"depthUpdate\",...}") and reinterpreting those bytes as a
+    // sequence number, causing every real message to be misclassified as a
+    // GAP_DETECTED event (audit Finding 7).
+    //
+    // Sequence-number extraction and gap detection for the Binance JSON feed
+    // require a proper JSON parser to extract U/u update IDs; that is deferred
+    // to a future ADR. Until then:
+    //   - All arriving frames are passed to normalize_and_forward() intact.
+    //   - expected_seq_ is not used; gap detection is disabled on this path.
+    //   - Stale detection (check_staleness) continues to operate correctly.
+    //
+    // S2-REQ-002 compliance: DEFERRED — gap detection is stubbed to passthrough.
+    // This function must be revisited when a zero-allocation JSON parser is
+    // approved as a dependency.
+
+    if (length == 0) [[unlikely]] {
         return;
     }
 
-    uint64_t seq_num;
-    std::memcpy(&seq_num, payload, sizeof(uint64_t));
-    
     // D4: Record CLOCK_MONOTONIC_RAW timestamp injected by the io_uring CQE caller.
-    // Acquired immediately after CQE completion, before sequence extraction.
     last_recv_time_ns_ = rx_timestamp_ns;
 
-    // Hot-path branch bias: Normal ordered delivery
-    if (seq_num == expected_seq_) [[likely]] {
-        if (current_state_ != FeedState::FEED_NORMAL) [[unlikely]] {
-            current_state_ = FeedState::FEED_NORMAL;
-            // S1 SPEC CORRECTION: L0 is execution plane. It cannot write to gov_flags_.
-            // Governance subsystem monitors Tier-0 and sets gov_flags_ out-of-band.
-        }
-        
-        expected_seq_++;
-        normalize_and_forward(payload + sizeof(uint64_t), length - sizeof(uint64_t), rx_timestamp_ns);
-    } 
-    // Gap Detection (S2-REQ-002)
-    else if (seq_num > expected_seq_) [[unlikely]] {
-        current_state_ = FeedState::GAP_DETECTED;
-        
-        // Emit GapEvent prior to the newly arrived out-of-order packet
-        emit_synthetic_event(0, 1); // 1 = GAP type (Implementation Defined)
-        
-        expected_seq_ = seq_num + 1;
-        normalize_and_forward(payload + sizeof(uint64_t), length - sizeof(uint64_t), rx_timestamp_ns);
-    } 
-    // Duplicate / Late Packet
-    else [[unlikely]] {
-        // S1 Specs: Drop late packets in L0; L1 only processes monotonically increasing sequence
+    // Transition back to FEED_NORMAL if we were in another state.
+    if (current_state_ != FeedState::FEED_NORMAL) [[unlikely]] {
+        current_state_ = FeedState::FEED_NORMAL;
+        // S1 SPEC CORRECTION: L0 is execution plane. It cannot write to gov_flags_.
+        // Governance subsystem monitors Tier-0 and sets gov_flags_ out-of-band.
     }
+
+    // Forward the complete, unstripped payload.
+    normalize_and_forward(payload, length, rx_timestamp_ns);
 }
 
 void FeedIngestor::check_staleness(uint64_t current_time_ns) noexcept {
@@ -91,25 +88,68 @@ void FeedIngestor::check_staleness(uint64_t current_time_ns) noexcept {
 }
 
 void FeedIngestor::normalize_and_forward(const uint8_t* event_data, std::size_t event_len, uint64_t rx_timestamp_ns) noexcept {
-    // Zero-allocation FlatBuffers normalization
-    // (Stub: maps raw bytes directly into the aligned MarketEventSlot structure)
-    egbos::shm::MarketEventSlot slot;
-    std::memset(slot.data, 0, sizeof(slot.data));
-    std::memcpy(slot.data, event_data, std::min(event_len, sizeof(slot.data)));
+    // S2-REQ-001 normalization: parse the Binance @depth JSON frame and emit
+    // one RawMarketEvent slot per price level into the SPSC ring.
+    //
+    // F1 fix: raw JSON bytes are no longer copied into slot.data.
+    // F2 fix: rx_timestamp_ns is stored in RawMarketEvent::ingestion_tsc_ via
+    //         the struct constructor — not via a raw memcpy to offset 24.
 
-    // Inject rx_timestamp_ns into the FlatBuffer's ingestion_tsc_ field (offset 24).
-    uint64_t endian_ts = ::flatbuffers::EndianScalar(rx_timestamp_ns);
-    std::memcpy(slot.data + 24, &endian_ts, sizeof(uint64_t));
+    struct CallbackCtx {
+        FeedIngestor* self;
+        uint64_t      rx_timestamp_ns; // passed through to validate
+    };
+    CallbackCtx ctx{ this, rx_timestamp_ns };
 
-    // Tier-0 Durability Logging (S2-REQ-004)
-    // NVMe ordering: Must append to Tier-0 BEFORE pushing to SPSC (Replay Fidelity)
-    struct iovec iov[1];
-    iov[0].iov_base = slot.data;
-    iov[0].iov_len  = sizeof(slot.data);
-    tier0_append(iov, 1);
+    auto callback = [](const egbos::events::RawMarketEvent& event,
+                       uint64_t first_update_id,
+                       uint32_t frame_level_index,
+                       void* user_ctx) noexcept -> bool
+    {
+        auto* c = static_cast<CallbackCtx*>(user_ctx);
+        FeedIngestor* ingestor = c->self;
 
-    // Cross-Plane IPC: Hand over to L1 limit order book engine
-    market_events_->push(slot);
+        // Construct the SPSC slot.
+        // Bytes 0-63:  RawMarketEvent (FlatBuffers struct, 64 bytes).
+        // Bytes 64-127: SlotFrameMetadata (U/u frame identity, 64 bytes).
+        egbos::shm::MarketEventSlot slot;
+        std::memset(slot.data, 0, sizeof(slot.data));
+
+        // Copy the 64-byte FlatBuffers struct into bytes 0-63.
+        static_assert(sizeof(egbos::events::RawMarketEvent) <= 64,
+            "RawMarketEvent does not fit in lower half of MarketEventSlot");
+        std::memcpy(slot.data, &event, sizeof(egbos::events::RawMarketEvent));
+
+        // Write SlotFrameMetadata into bytes 64-127.
+        // This carries U (first_update_id) and u (final_update_id = sequence_num)
+        // so L1Consumer can perform correct frame-level gap detection.
+        egbos::shm::SlotFrameMetadata& meta = egbos::shm::slot_frame_meta(slot);
+        meta.first_update_id   = first_update_id;
+        meta.final_update_id   = event.sequence_num();  // == u (final_update_id)
+        meta.frame_level_index = frame_level_index;
+        // _reserved is already zero from the memset above.
+
+        // Tier-0 Durability Logging (S2-REQ-004)
+        // NVMe ordering: append to Tier-0 BEFORE pushing to SPSC.
+        struct iovec iov[1];
+        iov[0].iov_base = slot.data;
+        iov[0].iov_len  = sizeof(slot.data);
+        ingestor->tier0_append(iov, 1);
+
+        // Hand over to L1 via the SPSC ring.
+        if (ingestor->market_events_) {
+            ingestor->market_events_->push(slot);
+        }
+        return true; // continue processing further levels
+    };
+
+    L0ParseStatus status = normalize_binance_depth(
+        event_data, event_len, rx_timestamp_ns, callback, &ctx);
+
+    // Parse failures are silently discarded at L0; the governance subsystem
+    // monitors Tier-0 for anomalies and can assert DEGRADED out-of-band.
+    // No heap allocation takes place on this path (GC-E-010).
+    (void)status;
 }
 
 void FeedIngestor::emit_synthetic_event(uint64_t timestamp_ns, uint8_t event_type) noexcept {
@@ -126,7 +166,9 @@ void FeedIngestor::emit_synthetic_event(uint64_t timestamp_ns, uint8_t event_typ
     iov[0].iov_len  = sizeof(slot.data);
     tier0_append(iov, 1);
 
-    market_events_->push(slot);
+    if (market_events_) {
+        market_events_->push(slot);
+    }
 }
 
 void FeedIngestor::tier0_append(const struct iovec* iov, int iovcnt) noexcept {

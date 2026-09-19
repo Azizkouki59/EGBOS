@@ -43,6 +43,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+
+#include "market_event_generated.h"
 #include "spsc_ring.h"
 
 // POSIX SHM / mmap / mlock / mbind headers (Linux)
@@ -269,9 +271,59 @@ static_assert(kGovernanceFlagsRegionSize % kPageSize == 0,
 // ── MarketEventsRegion ─────────────────────────────────────────────────────
 // Layout at /dev/shm/egbos_market_events.
 // Uses SpscRing which enforces alignas(64) on head and tail.
+//
+// Slot layout (128 bytes, ABI-stable):
+//   bytes  0-63 : RawMarketEvent (FlatBuffers struct, exactly 64 bytes)
+//   bytes 64-127: SlotFrameMetadata (frame-level sequencing data, 64 bytes)
+//
+// The upper 64 bytes were previously zeroed and unused.  SlotFrameMetadata
+// occupies them to carry Binance U/u (first/final_update_id) needed for
+// correct frame-level gap detection in L1Consumer.  The 128-byte ABI is
+// preserved — no change to kMarketEventsSlotSize or SpscRing instantiation.
 struct MarketEventSlot {
     alignas(128) uint8_t data[kMarketEventsSlotSize];
 };
+static_assert(kMarketEventsSlotSize == 128,
+    "MarketEventSlot ABI contract: slot must be exactly 128 bytes");
+static_assert(sizeof(egbos::events::RawMarketEvent) == 64,
+    "RawMarketEvent must occupy exactly 64 bytes (lower half of MarketEventSlot)");
+
+// ── SlotFrameMetadata ─────────────────────────────────────────────────────
+// Occupies bytes 64-127 of MarketEventSlot (upper half).
+// Written by FeedIngestor::normalize_and_forward for every real-event slot.
+// Read by L1Consumer for frame-aware gap detection.
+//
+// Frame continuity rule (Binance WebSocket @depth):
+//   Valid continuation : frame.first_update_id == prev_frame.final_update_id + 1
+//   Same frame         : slot.final_update_id  == previous slot.final_update_id
+//   Genuine gap        : frame.first_update_id != prev_frame.final_update_id + 1
+//                        AND slot is from a different frame
+//
+// This struct is NOT part of the FlatBuffers schema.  It is EGBOS-internal
+// slot metadata only and must not be persisted to Tier-0 in isolation.
+struct SlotFrameMetadata {
+    uint64_t first_update_id;    // Binance U: first update ID of this frame
+    uint64_t final_update_id;    // Binance u: final update ID of this frame
+                                 //   (== RawMarketEvent::sequence_num)
+    uint32_t frame_level_index;  // 0-based index of this level within its frame
+                                 //   (diagnostic only; not used for gap detection)
+    uint8_t  _reserved[44];      // future use — must be zero
+};
+static_assert(sizeof(SlotFrameMetadata) == 64,
+    "SlotFrameMetadata must be exactly 64 bytes (upper half of MarketEventSlot)");
+static_assert(offsetof(SlotFrameMetadata, first_update_id)   == 0,  "layout check");
+static_assert(offsetof(SlotFrameMetadata, final_update_id)   == 8,  "layout check");
+static_assert(offsetof(SlotFrameMetadata, frame_level_index) == 16, "layout check");
+
+// Returns a const reference to the SlotFrameMetadata embedded in a slot.
+inline const SlotFrameMetadata& slot_frame_meta(const MarketEventSlot& slot) noexcept {
+    return *reinterpret_cast<const SlotFrameMetadata*>(slot.data + 64);
+}
+// Mutable overload used by the ingestor writer.
+inline SlotFrameMetadata& slot_frame_meta(MarketEventSlot& slot) noexcept {
+    return *reinterpret_cast<SlotFrameMetadata*>(slot.data + 64);
+}
+
 using MarketEventsRegion = core::SpscRing<MarketEventSlot, kMarketEventsSlots>;
 
 // ── LobSnapshotsRegion ─────────────────────────────────────────────────────

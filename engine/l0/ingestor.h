@@ -21,7 +21,7 @@ typedef int ssize_t;
 #include <sys/uio.h> // for iovec
 #endif
 #include "engine/core/shm_layout.h"
-#include "market_event_generated.h"
+#include "engine/l0/binance_json_normalizer.h" // also pulls in market_event_generated.h
 
 namespace egbos::l0 {
 
@@ -66,8 +66,9 @@ private:
     int tier0_fd_;
     
     FeedState current_state_;
-    uint64_t  expected_seq_;
-    // D4: Kernel CLOCK_MONOTONIC_RAW timestamp in nanoseconds.
+    // expected_seq_ removed 2026-09-12: sequence-number gap detection is
+    // DEFERRED (S2-REQ-002). The field was orphaned by the Option-A passthrough
+    // patch and is no longer read or written anywhere. See ingestor.cpp.
     uint64_t  last_recv_time_ns_;
     
     // Configurable thresholds (normally from spec/ADRs)
