@@ -50,7 +50,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   add_executable(test_lob_determinism test_lob_determinism.cpp ../l1/lob_engine.cpp ../l0/ingestor.cpp ../l0/binance_json_normalizer.cpp)
   target_link_libraries(test_lob_determinism PRIVATE engine_core GTest::gtest GTest::gtest_main flatbuffers)
   target_compile_features(test_lob_determinism PRIVATE cxx_std_20)
-  gtest_discover_tests(test_lob_determinism)
+  gtest_discover_tests(test_lob_determinism PROPERTIES ENVIRONMENT "EGBOS_REPO_ROOT=${PROJECT_SOURCE_DIR}")
 
   add_executable(test_lob_fuzz test_lob_fuzz.cpp ../l1/lob_engine.cpp ../l0/ingestor.cpp ../l0/binance_json_normalizer.cpp)
   target_link_libraries(test_lob_fuzz PRIVATE engine_core GTest::gtest GTest::gtest_main flatbuffers)
@@ -89,7 +89,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 
   # S5-REQ-005: Zero-order-path application-level validation.
   # Intentionally does NOT link fix_consumer.cpp — link-time isolation proof.
-  add_executable(test_zero_order_path test_zero_order_path.cpp ../l0/ingestor.cpp)
+  add_executable(test_zero_order_path test_zero_order_path.cpp ../l0/ingestor.cpp ../l0/binance_json_normalizer.cpp)
   target_link_libraries(test_zero_order_path PRIVATE engine_core GTest::gtest GTest::gtest_main flatbuffers)
   target_compile_features(test_zero_order_path PRIVATE cxx_std_20)
   gtest_discover_tests(test_zero_order_path)
@@ -118,38 +118,88 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   # Governance: GOV-S5-L0-ARCH-DECISIONS (EGBOS-GOV-DECISION-2026-009)
   add_executable(test_live_feed_listener test_live_feed_listener.cpp
                  ../l0/live_feed_listener.cpp
-                 ../l0/ingestor.cpp)
-  target_link_libraries(test_live_feed_listener PRIVATE engine_core engine_l0 GTest::gtest GTest::gtest_main flatbuffers)
+                 ../l0/ingestor.cpp ../l0/binance_json_normalizer.cpp)
+  target_link_libraries(test_live_feed_listener PRIVATE engine_core engine_l0_market_data GTest::gtest GTest::gtest_main flatbuffers)
   target_compile_features(test_live_feed_listener PRIVATE cxx_std_20)
   gtest_discover_tests(test_live_feed_listener)
 
-  # S5-REQ-005: OS-level network namespace egress block verification.
-  # Requires CAP_NET_ADMIN; skips gracefully if environment lacks it.
-  # libcap is optional: if absent, capability checks report 'absent' (conservative).
+  # S5-REQ-005: targeted network-namespace connectivity verification.
+  # Each discovered case runs inside bwrap --unshare-net via TEST_LAUNCHER.
+  # Capability state is measured directly from /proc/self/status.
   add_executable(test_netns_egress test_netns_egress.cpp)
-  find_library(CAP_LIB cap)
-  if(CAP_LIB)
-    target_link_libraries(test_netns_egress PRIVATE engine_core GTest::gtest GTest::gtest_main ${CAP_LIB})
-    target_compile_definitions(test_netns_egress PRIVATE HAVE_LIBCAP=1)
-  else()
-    target_link_libraries(test_netns_egress PRIVATE engine_core GTest::gtest GTest::gtest_main)
-    message(STATUS "libcap not found: test_netns_egress will skip capability checks (ENVIRONMENT_BLOCKED path)")
-  endif()
+  target_link_libraries(test_netns_egress PRIVATE engine_core GTest::gtest GTest::gtest_main)
   target_compile_features(test_netns_egress PRIVATE cxx_std_20)
+  # Run each discovered GoogleTest case inside an isolated network namespace.
+  # TEST_LAUNCHER is honored by gtest_discover_tests() for both discovery
+  # and execution (CMake >= 3.29).
+  set_property(TARGET test_netns_egress PROPERTY TEST_LAUNCHER
+               bwrap --unshare-net --dev-bind / /)
   gtest_discover_tests(test_netns_egress)
   # Binance Feed Listener + Trading Client tests.
   # Classification: DEVELOPMENT_TEST / LOCAL_SYNTHETIC — NOT LIVE_OPERATIONAL.
   # Live connection sub-tests skip gracefully when testnet credentials are absent.
   # Governance: D7 (provenance classification), D9 (testnet != live_operational).
+  add_executable(test_binance_ws_protocol test_binance_ws_protocol.cpp)
+
+  target_link_libraries(test_binance_ws_protocol PRIVATE engine_core engine_l0_market_data OpenSSL::SSL OpenSSL::Crypto GTest::gtest GTest::gtest_main)
+
+  target_compile_features(test_binance_ws_protocol PRIVATE cxx_std_20)
+
+  gtest_discover_tests(test_binance_ws_protocol)
+
   add_executable(test_binance_feed_listener
                  test_binance_feed_listener.cpp)
   target_link_libraries(test_binance_feed_listener PRIVATE
-    engine_core engine_l0 GTest::gtest GTest::gtest_main)
+    engine_core engine_l0_market_data engine_l0_trading
+    GTest::gtest GTest::gtest_main)
   target_compile_features(test_binance_feed_listener PRIVATE cxx_std_20)
   gtest_discover_tests(test_binance_feed_listener)
 
   # S5-REQ-001: Live Qualification Harness (Binance production)
   add_executable(s5_live_binance_qualification ../../scripts/s5_live_binance_qualification.cpp)
-  target_link_libraries(s5_live_binance_qualification PRIVATE engine_core engine_l0 OpenSSL::SSL OpenSSL::Crypto)
+  target_link_libraries(s5_live_binance_qualification PRIVATE engine_core engine_l0_market_data OpenSSL::SSL OpenSSL::Crypto)
   target_compile_features(s5_live_binance_qualification PRIVATE cxx_std_20)
+  # S5-REQ-002: Zero-allocation JSON depth-update parser tests.
+  add_executable(test_depth_parser test_depth_parser.cpp ../l1/depth_parser.cpp)
+  target_link_libraries(test_depth_parser PRIVATE engine_core GTest::gtest GTest::gtest_main)
+  target_compile_features(test_depth_parser PRIVATE cxx_std_20)
+  gtest_discover_tests(test_depth_parser)
+
+  # S5-REQ-002: L1 consumer (DEGRADED-latching) tests.
+  add_executable(test_l1_consumer test_l1_consumer.cpp ../l1/depth_parser.cpp ../l1/l1_consumer.cpp ../l1/lob_engine.cpp)
+  target_link_libraries(test_l1_consumer PRIVATE engine_core GTest::gtest GTest::gtest_main)
+  target_compile_features(test_l1_consumer PRIVATE cxx_std_20)
+  gtest_discover_tests(test_l1_consumer)
+
+  # S2-REQ-006: LobEngine upsert_synthetic_level tests.
+  add_executable(test_lob_upsert test_lob_upsert.cpp ../l1/lob_engine.cpp)
+  target_link_libraries(test_lob_upsert PRIVATE engine_core GTest::gtest GTest::gtest_main flatbuffers)
+  target_compile_features(test_lob_upsert PRIVATE cxx_std_20)
+  gtest_discover_tests(test_lob_upsert)
+
+  # CLI and Binance Frame Semantic Tests (DEVELOPMENT_TEST)
+  add_executable(test_binance_frame_semantics test_binance_frame_semantics.cpp ../l1/lob_engine.cpp ../l1/depth_parser.cpp)
+  target_link_libraries(test_binance_frame_semantics PRIVATE engine_core GTest::gtest GTest::gtest_main)
+  target_compile_features(test_binance_frame_semantics PRIVATE cxx_std_20)
+  gtest_discover_tests(test_binance_frame_semantics)
+
+
 endif()
+
+add_executable(live_pipeline_diagnostic ../../scripts/live_pipeline_diagnostic.cpp)
+target_link_libraries(live_pipeline_diagnostic PRIVATE engine_core engine_l0_market_data engine_l1 OpenSSL::SSL OpenSSL::Crypto)
+target_compile_features(live_pipeline_diagnostic PRIVATE cxx_std_20)
+
+add_executable(e2e_live_diagnostic ../../scripts/e2e_live_diagnostic.cpp)
+target_link_libraries(e2e_live_diagnostic PRIVATE engine_core engine_l0_market_data engine_l1 flatbuffers OpenSSL::SSL OpenSSL::Crypto)
+target_compile_features(e2e_live_diagnostic PRIVATE cxx_std_20)
+
+# S5-REQ-005: structural market-data/trading binary boundary regression guard.
+# Verifies built S5 market-data binaries contain no order-entry implementation
+# symbols or Binance trading REST endpoint strings.
+add_test(
+  NAME S5MarketDataBoundary
+  COMMAND ${CMAKE_COMMAND} -E env
+          EGBOS_BUILD_DIR=${CMAKE_BINARY_DIR}
+          ${CMAKE_SOURCE_DIR}/scripts/check_s5_market_data_boundary.sh
+)

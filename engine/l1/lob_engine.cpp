@@ -197,6 +197,71 @@ void LobEngine::update_bbo() noexcept {
     }
 }
 
+// ── apply_depth_update ─────────────────────────────────────────────────────────────
+void LobEngine::apply_depth_update(const ParsedDepthUpdate& update) noexcept {
+    // Apply all bid levels from the frame.
+    // Binance semantics: qty == 0 means remove the price level, qty > 0 means
+    // insert-or-replace.  We use the same synthetic-ID scheme as
+    // upsert_synthetic_level to represent price levels without real order IDs.
+    for (std::size_t i = 0; i < update.bid_count; ++i) {
+        const int64_t price = update.bids[i].price;
+        const int64_t qty   = update.bids[i].qty;
+        // qty is int64_t from depth_parser; safe cast: Binance quantities are
+        // non-negative and well within uint32_t range at any typical LOB depth.
+        const uint32_t qty32 = (qty > 0) ? static_cast<uint32_t>(qty) : 0u;
+        upsert_synthetic_level(price, qty32, /*is_bid=*/true);
+        ++levels_applied_;
+    }
+    // Apply all ask levels from the frame.
+    for (std::size_t i = 0; i < update.ask_count; ++i) {
+        const int64_t price = update.asks[i].price;
+        const int64_t qty   = update.asks[i].qty;
+        const uint32_t qty32 = (qty > 0) ? static_cast<uint32_t>(qty) : 0u;
+        upsert_synthetic_level(price, qty32, /*is_bid=*/false);
+        ++levels_applied_;
+    }
+    // Advance the local book's update ID to the frame's final_update_id.
+    last_update_id_ = update.final_update_id;
+    ++depth_frames_applied_;
+}
+
+// ── BBO read-only accessors ─────────────────────────────────────────────────────────
+int64_t LobEngine::best_bid_price() const noexcept {
+    if (best_bid_index_ < 0) return 0;
+    return index_to_price(best_bid_index_);
+}
+int64_t LobEngine::best_ask_price() const noexcept {
+    if (best_ask_index_ >= static_cast<int32_t>(kMaxPriceLevels)) return 0;
+    return index_to_price(best_ask_index_);
+}
+int64_t LobEngine::best_bid_qty() const noexcept {
+    if (best_bid_index_ < 0) return 0;
+    return static_cast<int64_t>(bid_levels_[best_bid_index_].total_qty);
+}
+int64_t LobEngine::best_ask_qty() const noexcept {
+    if (best_ask_index_ >= static_cast<int32_t>(kMaxPriceLevels)) return 0;
+    return static_cast<int64_t>(ask_levels_[best_ask_index_].total_qty);
+}
+
+void LobEngine::get_book_levels(std::vector<Level>& out_bids, std::vector<Level>& out_asks, int limit) const noexcept {
+    out_bids.clear();
+    out_asks.clear();
+    int count = 0;
+    for (int32_t i = best_bid_index_; i >= 0 && count < limit; --i) {
+        if (bid_levels_[i].total_qty > 0) {
+            out_bids.push_back({index_to_price(i), static_cast<int64_t>(bid_levels_[i].total_qty)});
+            count++;
+        }
+    }
+    count = 0;
+    for (int32_t i = best_ask_index_; i < static_cast<int32_t>(kMaxPriceLevels) && count < limit; ++i) {
+        if (ask_levels_[i].total_qty > 0) {
+            out_asks.push_back({index_to_price(i), static_cast<int64_t>(ask_levels_[i].total_qty)});
+            count++;
+        }
+    }
+}
+
 Top5BidsAsks LobEngine::generate_top5_snapshot() const noexcept {
     Top5BidsAsks snap;
     std::memset(&snap, 0, sizeof(Top5BidsAsks));

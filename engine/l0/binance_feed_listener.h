@@ -24,6 +24,7 @@
 #include <cstddef>
 #include <string>
 #include <atomic>
+#include <functional>
 
 #if defined(__linux__)
 #include <openssl/ssl.h>
@@ -68,6 +69,8 @@ struct BinanceFeedConfig {
 // ──────────────────────────────────────────────────────────────────────
 class BinanceFeedListener {
 public:
+    friend class BinanceWSProtocolTest;
+
     explicit BinanceFeedListener(FeedIngestor& ingestor, const BinanceFeedConfig& config);
     ~BinanceFeedListener();
 
@@ -78,11 +81,30 @@ public:
     // Signal-safe stop request.
     void request_stop() noexcept;
 
+    // Optional frame-arrival callback.
+    // When set, cb is invoked with the CLOCK_MONOTONIC_RAW timestamp
+    // immediately after each data frame is dispatched to process_payload.
+    // Invoked on the hot receive path — must be noexcept and allocation-free.
+    // Classification: instrumentation only; does NOT affect production logic.
+    void set_frame_arrival_callback(std::function<void(uint64_t)> cb) noexcept {
+        frame_arrival_cb_ = std::move(cb);
+    }
+
     ListenerState   state()      const noexcept { return state_.load(std::memory_order_relaxed); }
     FeedProvenance  provenance() const noexcept { return provenance_; }
 
+    // Telemetry: track connection attempts and successful OPERATIONAL transitions.
+    uint64_t connect_attempts() const noexcept { return connect_attempts_.load(std::memory_order_relaxed); }
+    uint64_t connect_count()    const noexcept { return connect_count_.load(std::memory_order_relaxed); }
+
     // D9: classification accessor for operational logging.
     const char* provenance_str() const noexcept;
+
+    // Read-only accessors for the current WebSocket frame payload.
+    // Valid only from within a frame_arrival_cb invocation.
+    // Classification: instrumentation/diagnostic only.
+    const uint8_t* frame_buf() const noexcept { return frame_buf_; }
+    std::size_t    frame_len() const noexcept { return frame_len_; }
 
 private:
     // WebSocket frame receive — returns bytes read, 0 on graceful close, <0 on error.
@@ -100,6 +122,8 @@ private:
     FeedProvenance             provenance_;
     std::atomic<ListenerState> state_{ListenerState::INITIALIZING};
     std::atomic<bool>          running_{false};
+    std::atomic<uint64_t>      connect_attempts_{0};
+    std::atomic<uint64_t>      connect_count_{0};
 
     // TCP socket fd
     int fd_{-1};
@@ -108,6 +132,11 @@ private:
 #if defined(__linux__)
     SSL_CTX* ssl_ctx_{nullptr};
     SSL*     ssl_{nullptr};
+
+    // A4: Handshake-only test seam for deterministic application-byte chunks.
+    // Used exclusively inside perform_websocket_handshake(). The hot-path
+    // recv_frame() loop always calls ::SSL_read() directly.
+    int (*injected_ssl_read_)(SSL*, void*, int) = nullptr;
 #endif
 
     // Hot-path receive buffer (D8: 8192 per MARKET-DATA-001 specification)
@@ -115,9 +144,28 @@ private:
     uint8_t recv_buf_[kRecvBufSize]{};
 
     // WebSocket frame assembly buffer (handles fragmented frames)
-    static constexpr std::size_t kFrameBufSize = 65536;
+    // 18 KB frames observed on production Binance @depth (1000-level snapshots).
+    // 128 KB gives a 7x safety margin; still fits in a single L2 cache miss budget.
+    static constexpr std::size_t kFrameBufSize = 131072;
     uint8_t frame_buf_[kFrameBufSize]{};
     std::size_t frame_len_{0};
+
+    // A4 pending-buffer invariants (enforced on every connection transition):
+    //   pending_rx_offset_ <= pending_rx_len_ <= kPendingBufSize
+    // Reset to (0,0) at handshake start and in cleanup_connection().
+    static constexpr std::size_t kPendingBufSize = 65536;
+    uint8_t pending_rx_buf_[kPendingBufSize]{};
+    std::size_t pending_rx_len_{0};
+    std::size_t pending_rx_offset_{0};
+
+    // A4: Maximum HTTP response bytes accumulated during the opening handshake.
+    static constexpr std::size_t kMaxHandshakeSize = 8192;
+
+    // R4 NEW POLICY DECISION — not existing repository governance.
+    // No ADR/claim currently authorizes 10485760 (10 MiB). This is an
+    // implementation resource/security bound, separate from RFC 6455.
+    // Protocol-invalid (MSB=1 in the 64-bit length field) is independent.
+    static constexpr uint64_t kMaxDrainSize = 10485760;
 
     // WebSocket masking key (client→server frames must be masked per RFC 6455)
     static constexpr std::size_t kMaskKeySize = 4;
@@ -125,6 +173,9 @@ private:
 
     // WebSocket state
     bool ws_connected_{false};
+
+    // Optional instrumentation callback (nullptr when not set).
+    std::function<void(uint64_t)> frame_arrival_cb_;
 };
 
 } // namespace egbos::l0

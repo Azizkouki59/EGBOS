@@ -1,12 +1,12 @@
 // engine/tests/test_netns_egress.cpp
-// EGBOS S5-REQ-005 — Network Namespace Egress Block Test
+// EGBOS S5-REQ-005 — Network Namespace Targeted Egress Probe Test
 //
 // Classification  : INFRASTRUCTURE_VALIDATION
 // Governance      : V3 AUTHORITATIVE — S5-REQ-005
 //
-// This test verifies the OS-level architectural enforcement property:
-// an unprivileged process inside an isolated network namespace (no default
-// outbound route) cannot establish outbound connections to external hosts.
+// This test verifies targeted namespace-level connectivity conditions:
+// an unprivileged process inside the tested namespace has no default route,
+// and a TCP connection probe to 8.8.8.8:80 is denied.
 //
 // ENVIRONMENT NOTE:
 // This test requires CAP_NET_ADMIN to create and configure a network namespace.
@@ -19,12 +19,15 @@
 //   2. CAP_NET_ADMIN is absent after privilege drop.
 //   3. CAP_NET_RAW is absent after privilege drop.
 //   4. No default outbound route exists in the namespace.
-//   5. socket() + connect() to external IP results in egress denied.
+//   5. socket() + connect() to the tested destination 8.8.8.8:80 is denied.
 
 #include <gtest/gtest.h>
 #include <cstring>
 #include <cerrno>
 #include <cstdlib>
+#include <cstdint>
+#include <fstream>
+#include <string>
 
 #if defined(__linux__)
 #include <sys/socket.h>
@@ -33,25 +36,34 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sched.h>
-#if defined(HAVE_LIBCAP)
-#include <sys/capability.h>
-#endif
 
 namespace {
 
-// Returns true if the given capability is currently in the effective set.
-// Without libcap, always returns false (treated as "absent" — conservative).
-bool has_capability([[maybe_unused]] int cap) {
-#if defined(HAVE_LIBCAP)
-    cap_t caps = cap_get_proc();
-    if (!caps) return false;
-    cap_flag_value_t val = CAP_CLEAR;
-    cap_get_flag(caps, static_cast<cap_value_t>(cap), CAP_EFFECTIVE, &val);
-    cap_free(caps);
-    return val == CAP_SET;
-#else
-    return false; // libcap not available; conservatively report no capabilities
-#endif
+// Read the Linux effective capability mask directly from /proc.
+// Returning false means the capability state could not be measured and the
+// caller must treat the environment as blocked rather than assuming absence.
+bool read_effective_capability_mask(std::uint64_t& mask) {
+    std::ifstream f("/proc/self/status");
+    if (!f.is_open()) return false;
+
+    std::string key;
+    std::string value;
+    while (f >> key >> value) {
+        if (key == "CapEff:") {
+            try {
+                std::size_t pos = 0;
+                mask = std::stoull(value, &pos, 16);
+                return pos == value.size();
+            } catch (...) {
+                return false;
+            }
+        }
+
+        std::string rest;
+        std::getline(f, rest);
+    }
+
+    return false;
 }
 
 // Attempt to connect to an external host; return the errno.
@@ -96,10 +108,8 @@ bool no_default_route() {
 
 } // namespace
 
-// Helper to check for NETNS capability before running tests
-static bool netns_available() {
-    return has_capability(21); // CAP_NET_ADMIN = 21
-}
+// Linux capability numbers from include/uapi/linux/capability.h:
+// CAP_NET_ADMIN = 12, CAP_NET_RAW = 13.
 
 // ── Test 1: UID check ─────────────────────────────────────────────────────────
 // The engine must never run as root inside the enforcement architecture.
@@ -115,26 +125,26 @@ TEST(NetnsEgressTest, ProcessIsNotRoot) {
 
 // ── Test 2: CAP_NET_ADMIN absent ─────────────────────────────────────────────
 TEST(NetnsEgressTest, CapNetAdminAbsent) {
-    bool has_cap = has_capability(21); // CAP_NET_ADMIN = 21
-    if (!netns_available() && !has_cap) {
-        ASSERT_FALSE(has_cap) << "CAP_NET_ADMIN must be absent in unprivileged engine";
-        return;
+    std::uint64_t mask = 0;
+    if (!read_effective_capability_mask(mask)) {
+        GTEST_SKIP() << "ENVIRONMENT_BLOCKED: Cannot read /proc/self/status CapEff";
     }
-    if (has_cap) {
-        GTEST_SKIP() << "ENVIRONMENT_BLOCKED: CAP_NET_ADMIN still present. "
-                        "Run via s5_zero_order_path_enforcer.sh --test-only first.";
-    }
-    ASSERT_FALSE(has_cap);
+
+    constexpr unsigned kCapNetAdmin = 12;
+    ASSERT_EQ(mask & (std::uint64_t{1} << kCapNetAdmin), 0ULL)
+        << "CAP_NET_ADMIN must be absent from effective capabilities";
 }
 
 // ── Test 3: CAP_NET_RAW absent ───────────────────────────────────────────────
 TEST(NetnsEgressTest, CapNetRawAbsent) {
-    bool has_cap = has_capability(13); // CAP_NET_RAW = 13
-    if (has_cap) {
-        GTEST_SKIP() << "ENVIRONMENT_BLOCKED: CAP_NET_RAW still present. "
-                        "Run via s5_zero_order_path_enforcer.sh --test-only first.";
+    std::uint64_t mask = 0;
+    if (!read_effective_capability_mask(mask)) {
+        GTEST_SKIP() << "ENVIRONMENT_BLOCKED: Cannot read /proc/self/status CapEff";
     }
-    ASSERT_FALSE(has_cap);
+
+    constexpr unsigned kCapNetRaw = 13;
+    ASSERT_EQ(mask & (std::uint64_t{1} << kCapNetRaw), 0ULL)
+        << "CAP_NET_RAW must be absent from effective capabilities";
 }
 
 // ── Test 4: No default outbound route ────────────────────────────────────────
@@ -148,8 +158,8 @@ TEST(NetnsEgressTest, NoDefaultOutboundRoute) {
     ASSERT_TRUE(no_default_route()) << "No default outbound route must exist in isolated namespace";
 }
 
-// ── Test 5: Egress connection denied ─────────────────────────────────────────
-TEST(NetnsEgressTest, EgressConnectionDenied) {
+// ── Test 5: Targeted egress probe denied ─────────────────────────────────────
+TEST(NetnsEgressTest, TargetedEgressProbeDenied) {
     // Pre-check: if we have a default route, the test can't verify enforcement.
     if (!no_default_route()) {
         GTEST_SKIP() << "ENVIRONMENT_BLOCKED: Not running inside isolated namespace. "
@@ -158,22 +168,23 @@ TEST(NetnsEgressTest, EgressConnectionDenied) {
 
     int err = try_egress_connect();
 
-    // Acceptable errno values when egress is structurally denied (no route):
-    //   ENETUNREACH (101): No route to host (correct for isolated namespace)
+    // Acceptable errno values for the tested connectivity probe being denied:
+    //   ENETUNREACH (101): No route to host
     //   EHOSTUNREACH (113): Host unreachable
-    //   ECONNREFUSED (111): Connection refused (should not happen for 8.8.8.8)
-    //   EAGAIN (11) or EINPROGRESS (115): Non-blocking, but route lookup fails
+    //   EACCES (13): Access denied
+    //   EPERM (1): Operation not permitted
+    //   ECONNABORTED (103): Connection aborted
     //
-    // We do NOT hard-code a single errno; the namespace policy determines the exact error.
+    // We do not require one specific denial errno; the tested namespace
+    // configuration determines the exact kernel error.
     bool egress_denied = (err == ENETUNREACH || err == EHOSTUNREACH || err == EACCES ||
                           err == EPERM || err == ECONNABORTED);
-    if (!egress_denied && err == 0) {
-        FAIL() << "EGRESS_ALLOWED: connect() to 8.8.8.8:80 succeeded. "
-               << "Zero-order path enforcement is NOT in effect.";
+    if (err == 0) {
+        FAIL() << "TARGETED_EGRESS_ALLOWED: connect() to 8.8.8.8:80 succeeded.";
     }
 
     ASSERT_TRUE(egress_denied)
-        << "Egress must be denied by kernel routing policy. "
+        << "Targeted connectivity probe must be denied in the tested namespace. "
         << "Got errno=" << err << " (" << strerror(err) << ")";
 }
 

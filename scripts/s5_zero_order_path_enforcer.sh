@@ -12,16 +12,20 @@
 #       â†“
 #   configure RX-only interface (lo or specified multicast iface)
 #       â†“
-#   remove/deny outbound routing (no default gateway)
+#   configure namespace without a default route
 #       â†“
 #   drop privileges (setuid to EGBOS_USER)
 #       â†“
 #   exec() EGBOS engine â€” runs UNPRIVILEGED in isolated namespace
 #
-# The engine CANNOT send outbound execution-gateway traffic because:
-#   1. The network namespace has no default route.
-#   2. The only reachable interface is the configured RX-only feed interface.
+# The disposable namespace enforces the tested S5 boundary conditions:
+#   1. No default route is present in the namespace.
+#   2. Only the configured RX-side interface is provisioned by this harness.
 #   3. The engine process has no CAP_NET_ADMIN / CAP_NET_RAW after exec().
+#
+# IMPORTANT:
+#   Absence of a default route does NOT by itself prove arbitrary egress is
+#   impossible. Connected routes may still permit traffic to reachable peers.
 #
 # Usage:
 #   sudo s5_zero_order_path_enforcer.sh --engine-binary <path> [--engine-user <user>]
@@ -94,27 +98,32 @@ fi
 echo "[S5-REQ-005] Verifying: no default outbound route in namespace"
 ROUTES=$(ip netns exec "$NETNS_NAME" ip route show 2>&1)
 if echo "$ROUTES" | grep -q 'default'; then
-    echo "[S5-REQ-005] FAIL: Default route found in namespace â€” outbound not denied" >&2
+    echo "[S5-REQ-005] FAIL: Default route found; required no-default-route condition is not satisfied" >&2
     echo "$ROUTES" >&2
     exit 1
 fi
-echo "[S5-REQ-005] PASS: No default route. Egress structurally denied by kernel routing table."
+echo "[S5-REQ-005] PASS: No default route observed in disposable namespace."
+echo "[S5-REQ-005] NOTE: Absence of a default route does not by itself prove arbitrary egress is impossible."
 
 # â”€â”€â”€ Verify: Target user exists and is not root â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-if ! id "$ENGINE_USER" &>/dev/null; then
-    echo "[S5-REQ-005] WARNING: Engine user '${ENGINE_USER}' not found. Egress test will use current shell."
-    ENGINE_UID=0
-else
+if [[ "$TEST_ONLY" == false ]]; then
+    if ! id "$ENGINE_USER" &>/dev/null; then
+        echo "[S5-REQ-005] ERROR: Engine user '${ENGINE_USER}' does not exist." >&2
+        echo "[S5-REQ-005] Production execution requires an existing unprivileged user." >&2
+        exit 1
+    fi
+
     ENGINE_UID=$(id -u "$ENGINE_USER")
     if [[ "$ENGINE_UID" -eq 0 ]]; then
         echo "[S5-REQ-005] ERROR: ENGINE_USER resolves to root (uid 0). Engine must not run as root." >&2
         exit 1
     fi
+
     echo "[S5-REQ-005] Engine user: ${ENGINE_USER} (uid=${ENGINE_UID})"
 fi
 
-# â”€â”€â”€ Test mode: verify egress is blocked from inside namespace â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-echo "[S5-REQ-005] Running egress block verification from inside namespace"
+# â”€â”€â”€ Test mode: verify targeted egress probe from inside namespace â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+echo "[S5-REQ-005] Running targeted egress probe from inside namespace"
 EGRESS_TEST_RESULT="FAIL"
 set +e
 ip netns exec "$NETNS_NAME" sh -c '
@@ -157,10 +166,10 @@ finally:
 
 if echo "$EGRESS_OUTPUT" | grep -q 'EGRESS_DENIED'; then
     EGRESS_TEST_RESULT="PASS"
-    echo "[S5-REQ-005] PASS: Egress blocked â€” ${EGRESS_OUTPUT}"
+    echo "[S5-REQ-005] PASS: Targeted egress probe blocked â€” ${EGRESS_OUTPUT}"
 elif echo "$EGRESS_OUTPUT" | grep -q 'EGRESS_ALLOWED'; then
     EGRESS_TEST_RESULT="FAIL"
-    echo "[S5-REQ-005] FAIL: Egress NOT blocked â€” ${EGRESS_OUTPUT}" >&2
+    echo "[S5-REQ-005] FAIL: Targeted egress probe succeeded â€” ${EGRESS_OUTPUT}" >&2
     exit 1
 else
     echo "[S5-REQ-005] EGRESS_TEST_RESULT=INCONCLUSIVE: ${EGRESS_OUTPUT}"
@@ -173,11 +182,11 @@ if [[ "$TEST_ONLY" == true ]]; then
     echo "[S5-REQ-005] Namespace policy verification:"
     echo "  Namespace            : ${NETNS_NAME}"
     echo "  Default route absent : PASS"
-    echo "  Egress blocked       : ${EGRESS_TEST_RESULT}"
+    echo "  Targeted probe blocked: ${EGRESS_TEST_RESULT}"
     echo "  Classification       : INFRASTRUCTURE_VALIDATION"
     echo ""
-    echo "[S5-REQ-005] NOTE: This script proves the OS-level namespace enforcement"
-    echo "[S5-REQ-005] architecture. ARCHITECTURAL_ENFORCEMENT claim requires:"
+    echo "[S5-REQ-005] NOTE: This script verifies the namespace configuration and targeted egress probe result."
+    echo "[S5-REQ-005] ARCHITECTURAL_ENFORCEMENT scope is limited to the conditions actually observed."
     echo "[S5-REQ-005]   1. This script executed as the privileged bootstrap."
     echo "[S5-REQ-005]   2. Engine running unprivileged inside the namespace."
     echo "[S5-REQ-005]   3. Physical RX feed interface present and reachable."
@@ -190,11 +199,19 @@ if [[ -z "$ENGINE_BINARY" ]]; then
     exit 1
 fi
 
-echo "[S5-REQ-005] Dropping privileges and exec-ing engine inside namespace"
+echo "[S5-REQ-005] Dropping privileges and running engine inside namespace"
 echo "[S5-REQ-005] Engine binary: ${ENGINE_BINARY}"
 echo "[S5-REQ-005] Engine user  : ${ENGINE_USER} (uid=${ENGINE_UID})"
 
-# exec inside namespace, dropping all capabilities, as the engine user
-exec ip netns exec "$NETNS_NAME" \
+# Run the engine as a child of this bootstrap shell rather than replacing the
+# shell itself. This preserves the EXIT trap so the namespace is cleaned up
+# after engine termination.
+set +e
+ip netns exec "$NETNS_NAME" \
     capsh --drop=cap_net_admin,cap_net_raw --user="$ENGINE_USER" -- \
     -c "exec \"$ENGINE_BINARY\""
+ENGINE_EXIT=$?
+set -e
+
+echo "[S5-REQ-005] Engine exited with status ${ENGINE_EXIT}"
+exit "${ENGINE_EXIT}"

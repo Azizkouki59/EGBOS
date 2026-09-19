@@ -11,6 +11,7 @@
 #include "engine/core/fixed_point.h"
 #include "engine/core/pool_allocator.h"
 #include "engine/core/shm_layout.h"
+#include "engine/l1/depth_parser.h"  // ParsedDepthUpdate
 
 namespace egbos::l1 {
 
@@ -47,8 +48,23 @@ public:
     void modify_order(uint64_t order_id, uint32_t new_qty) noexcept;
     void cancel_order(uint64_t order_id) noexcept;
 
-    // Aggregate depth-stream mutation (Finding 19 resolution / design note 2026-09-13).
-    // Called by L1Consumer for each price-level entry in a parsed depthUpdate.
+    // ── Production depth-update application API ───────────────────────────────
+    // apply_depth_update: consumes ONE complete ParsedDepthUpdate (one Binance
+    // @depth frame) and applies all bid and ask levels atomically at the frame
+    // boundary.  This is the correct production API for the CLI and any consumer
+    // that receives a complete frame at a time rather than per-level events.
+    //
+    // The caller is responsible for Binance U/u sequence validation BEFORE calling
+    // this function.  apply_depth_update does not perform gap detection — it simply
+    // applies each level in the frame and updates last_update_id_ to
+    // update.final_update_id.
+    //
+    // Quantity == 0 → remove the price level (Binance deletion semantics).
+    // Quantity  > 0 → insert or replace the price level.
+    void apply_depth_update(const ParsedDepthUpdate& update) noexcept;
+
+    // ── Synthetic level mutation (test / L1Consumer path) ─────────────────────
+    // Called by L1Consumer for each price-level event (per-level slot path).
     // Internally selects add_order / modify_order / cancel_order based on live
     // order_lookup_ state — L1Consumer must NOT duplicate this decision.
     // See SYNTHETIC ID COLLISION-SAFETY CONSTRAINT comment in lob_engine.cpp.
@@ -56,6 +72,28 @@ public:
 
     // Snapshot generation for L1 -> L2 IPC
     Top5BidsAsks generate_top5_snapshot() const noexcept;
+
+    // ── Read-only BBO accessors (CLI / diagnostic use) ────────────────────────
+    struct Level {
+        int64_t price;
+        int64_t qty;
+    };
+    // Fills vectors with up to `limit` active bid and ask levels.
+    void get_book_levels(std::vector<Level>& out_bids, std::vector<Level>& out_asks, int limit) const noexcept;
+
+    // Returns fixed-point price/quantity at the best bid/ask, or 0 if empty.
+    // Price scale: kPriceScale (10^7) — same as depth_parser.h.
+    int64_t  best_bid_price() const noexcept;
+    int64_t  best_ask_price() const noexcept;
+    int64_t  best_bid_qty()   const noexcept;
+    int64_t  best_ask_qty()   const noexcept;
+
+    // Last applied Binance final_update_id (u), updated by apply_depth_update.
+    uint64_t last_update_id() const noexcept { return last_update_id_; }
+
+    // Total number of complete depth frames successfully applied.
+    uint64_t depth_frames_applied() const noexcept { return depth_frames_applied_; }
+    uint64_t levels_applied()       const noexcept { return levels_applied_; }
 
 private:
     int32_t price_to_index(int64_t price) const noexcept;
@@ -87,9 +125,12 @@ private:
     // Pool allocator for nodes (S2-REQ-005, GC-E-010 compliance)
     egbos::alloc::FixedPool<OrderNode, kMaxOrders> order_pool_;
 
-    int32_t best_bid_index_{-1};
-    int32_t best_ask_index_{kMaxPriceLevels};
-    
+    int32_t  best_bid_index_{-1};
+    int32_t  best_ask_index_{kMaxPriceLevels};
+    uint64_t last_update_id_{0};         // tracks Binance u for apply_depth_update path
+    uint64_t depth_frames_applied_{0};   // count of complete frames applied
+    uint64_t levels_applied_{0};         // count of individual level mutations applied
+
     void update_bbo() noexcept;
 
 public:
