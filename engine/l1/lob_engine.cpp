@@ -6,10 +6,26 @@
 #include <cstring>
 #include "../core/snapshot_abi.h"
 
+#include <cstdio>
+#include <cstdlib>
+#include <unistd.h>
+
 namespace egbos::l1 {
+
+namespace {
+[[noreturn]] inline void lob_fatal(const char* msg) noexcept {
+    char buf[256];
+    std::snprintf(buf, sizeof(buf), "EGBOS TERMINAL_HALT: LobEngine fatal error: %s\n", msg);
+    (void)::write(STDERR_FILENO, buf, std::strlen(buf));
+    std::abort();
+}
+} // namespace
 
 LobEngine::LobEngine(int64_t anchor_price, int64_t tick_size) noexcept
     : anchor_price_(anchor_price), tick_size_(tick_size) {
+    if (tick_size_ <= 0) {
+        lob_fatal("tick_size must be positive");
+    }
     order_lookup_.fill(nullptr);
     std::memset(bid_levels_.data(), 0, sizeof(bid_levels_));
     std::memset(ask_levels_.data(), 0, sizeof(ask_levels_));

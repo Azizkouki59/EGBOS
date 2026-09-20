@@ -217,3 +217,17 @@ TEST(LobPriceIndexTest, NegativeAnchorNearMin) {
     auto s = e->generate_top5_snapshot();
     EXPECT_EQ(s.bid_price_offsets[0], 32767);
 }
+
+TEST(LobPriceIndexDeathTest, ConstructorRejectsNonPositiveTickSize) {
+    EXPECT_DEATH({
+        auto e = std::make_unique<egbos::l1::LobEngine>(100000, 0);
+    }, "EGBOS TERMINAL_HALT: LobEngine fatal error: tick_size must be positive");
+
+    EXPECT_DEATH({
+        auto e = std::make_unique<egbos::l1::LobEngine>(100000, -1);
+    }, "EGBOS TERMINAL_HALT: LobEngine fatal error: tick_size must be positive");
+
+    EXPECT_DEATH({
+        auto e = std::make_unique<egbos::l1::LobEngine>(100000, INT64_MIN);
+    }, "EGBOS TERMINAL_HALT: LobEngine fatal error: tick_size must be positive");
+}
