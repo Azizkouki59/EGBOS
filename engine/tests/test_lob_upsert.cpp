@@ -218,6 +218,23 @@ TEST(LobPriceIndexTest, NegativeAnchorNearMin) {
     EXPECT_EQ(s.bid_price_offsets[0], 32767);
 }
 
+TEST(LobPriceIndexTest, ExactBoundaries) {
+    auto e = std::make_unique<egbos::l1::LobEngine>(100000, 10);
+    // kMaxPriceLevels = 65536. Midpoint = 32768.
+    // Max index is 65535. Top edge: anchor + (32767 * tick)
+    e->add_order(1, 100000 + 32767 * 10, 5, true);
+    // Overflow top: anchor + (32768 * tick) -> clamps to 65535
+    e->add_order(2, 100000 + 32768 * 10, 5, true);
+    // Min index is 0. Bottom edge: anchor - (32768 * tick)
+    e->add_order(3, 100000 - 32768 * 10, 5, false);
+    // Overflow bottom: anchor - (32769 * tick) -> clamps to 0
+    e->add_order(4, 100000 - 32769 * 10, 5, false);
+
+    auto s = e->generate_top5_snapshot();
+    EXPECT_EQ(s.bid_price_offsets[0], 32767); // Clamped & max
+    EXPECT_EQ(s.ask_price_offsets[0], -32768); // Clamped & min
+}
+
 TEST(LobPriceIndexDeathTest, ConstructorRejectsNonPositiveTickSize) {
     EXPECT_DEATH({
         auto e = std::make_unique<egbos::l1::LobEngine>(100000, 0);

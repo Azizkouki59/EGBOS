@@ -41,11 +41,13 @@ int32_t LobEngine::price_to_index(int64_t price) const noexcept {
         return (price < anchor_price_) ? 0 : static_cast<int32_t>(kMaxPriceLevels) - 1;
     }
     int64_t ticks = diff / tick_size_;
-    int32_t index = static_cast<int32_t>(kMaxPriceLevels / 2 + ticks);
-    // Boundary clamp for safety
-    if (index < 0) index = 0;
-    if (index >= static_cast<int32_t>(kMaxPriceLevels)) index = kMaxPriceLevels - 1;
-    return index;
+    int64_t idx64;
+    if (__builtin_add_overflow(static_cast<int64_t>(kMaxPriceLevels / 2), ticks, &idx64)) {
+        return (ticks < 0) ? 0 : static_cast<int32_t>(kMaxPriceLevels) - 1;
+    }
+    if (idx64 < 0) idx64 = 0;
+    if (idx64 >= static_cast<int64_t>(kMaxPriceLevels)) idx64 = static_cast<int64_t>(kMaxPriceLevels) - 1;
+    return static_cast<int32_t>(idx64);
 }
 
 int64_t LobEngine::index_to_price(int32_t index) const noexcept {
