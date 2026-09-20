@@ -7,7 +7,7 @@ namespace egbos::core {
 
 static constexpr uint64_t kSnapshotMagic = 0x4547424F5353484DULL;
 static constexpr uint32_t kFormatVersion = 1;
-static constexpr uint32_t kSchemaVersion = 1;
+static constexpr uint32_t kSchemaVersion = 2;
 
 #pragma pack(push, 1)
 

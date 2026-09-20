@@ -12,6 +12,7 @@
 
 using namespace egbos::core;
 using namespace egbos::l1;
+#include <openssl/sha.h>   // add near the other includes if not already present
 
 TEST(SnapshotContractTest, SerializationHydrationSucceeds) {
     egbos::wal::WalWriter wal_writer("/tmp/dummy_wal", "/tmp/dummy_wal_shadow");
@@ -95,4 +96,35 @@ TEST(SnapshotContractTest, DeterministicSerializationIgnoresHeartbeat) {
 
     // serialize(A) == serialize(B) despite different heartbeat TSC
     EXPECT_EQ(blobA, blobB);
+}
+
+TEST(SnapshotContractTest, RejectsOldSchemaVersionWithValidHash) {
+    egbos::wal::WalWriter wal_writer("/tmp/dummy_wal3", "/tmp/dummy_wal_shadow3");
+    GovernanceFlags gov_flags;
+    auto pos = std::make_unique<PositionEngine>(wal_writer, gov_flags);
+    auto risk = std::make_unique<RiskEnforcer>(gov_flags, *pos);
+    auto lob = std::make_unique<LobEngine>(100000, 100);
+    lob->add_order(1, 100100, 5, true);
+
+    auto blob = SnapshotSerializer::serialize(*pos, *risk, *lob);
+
+    // Sanity: the untouched blob must deserialize.
+    {
+        auto pos2 = std::make_unique<PositionEngine>(wal_writer, gov_flags);
+        auto risk2 = std::make_unique<RiskEnforcer>(gov_flags, *pos2);
+        auto lob2 = std::make_unique<LobEngine>(100000, 100);
+        ASSERT_TRUE(SnapshotDeserializer::deserialize(blob, *pos2, *risk2, *lob2));
+    }
+
+    // Forge a v1 blob: patch schema_version, then recompute a VALID hash
+    // (hash is over the whole blob with the hash field zeroed).
+    auto* hdr = reinterpret_cast<SnapshotHeader*>(blob.data());
+    hdr->schema_version = 1;
+    std::memset(hdr->hash, 0, 32);
+    SHA256(blob.data(), blob.size(), hdr->hash);
+
+    auto pos3 = std::make_unique<PositionEngine>(wal_writer, gov_flags);
+    auto risk3 = std::make_unique<RiskEnforcer>(gov_flags, *pos3);
+    auto lob3 = std::make_unique<LobEngine>(100000, 100);
+    EXPECT_FALSE(SnapshotDeserializer::deserialize(blob, *pos3, *risk3, *lob3));
 }
