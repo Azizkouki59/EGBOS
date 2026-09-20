@@ -298,7 +298,9 @@ TEST_F(GapFrameworkTest, ClockContract_FirstPacketInitializesTimestamp) {
 TEST_F(GapFrameworkTest, ClockContract_TimestampIsNonZeroAfterFirstPacket) {
     // After a packet with ts > 0, staleness check beyond the threshold
     // must emit STALE — proving last_recv_time_ns_ != 0 (mock is gone).
-    auto ingestor = make_ingestor();
+    // Pure clock/staleness contract test: disable Tier-0 durability.
+    egbos::l0::FeedIngestor ingestor(
+        &market_events_, &gov_flags_, -1);
     constexpr uint64_t kFirstTs = 1'000'000'000ULL; // 1s
     constexpr uint64_t kNowTs   = kFirstTs + 600'000'000ULL; // 1.6s > 500ms
 
@@ -319,7 +321,9 @@ TEST_F(GapFrameworkTest, ClockContract_TimestampIsNonZeroAfterFirstPacket) {
 TEST_F(GapFrameworkTest, ClockContract_MonotonicTimestampsNoSpuriousStale) {
     // Successive packets with monotonically increasing timestamps must not
     // trigger stale detection between packets.
-    auto ingestor = make_ingestor();
+    // Pure clock/staleness contract test: disable Tier-0 durability.
+    egbos::l0::FeedIngestor ingestor(
+        &market_events_, &gov_flags_, -1);
     uint8_t payload[128]{};
     constexpr uint64_t kBase = 500'000'000ULL;
     egbos::shm::MarketEventSlot slot;
@@ -336,6 +340,147 @@ TEST_F(GapFrameworkTest, ClockContract_MonotonicTimestampsNoSpuriousStale) {
             << "No stale event at packet i=" << i;
     }
 }
+
+// ── Test: run_loop ordering contract — stale event before process_payload ─────
+//
+// Models the exact bug fixed in BinanceFeedListener::run_loop() (2026-09-20):
+//
+//   T0: frame received → process_payload(T0) → last_recv_time_ns_ = T0
+//   T1 = T0 + kStaleThresholdNs + 1 ns
+//   [run_loop is blocked in SSL_read for >500ms; no check_staleness is called]
+//   Frame arrives at T1.
+//
+// CORRECT ordering (post-fix):
+//   check_staleness(T1)  →  idle = T1 - T0 > 500ms → STALE event emitted
+//   process_payload(T1)  →  last_recv_time_ns_ = T1 → state = FEED_NORMAL
+//
+// WRONG ordering (pre-fix):
+//   process_payload(T1)  →  last_recv_time_ns_ = T1 → state = FEED_NORMAL
+//   check_staleness(T1)  →  idle = T1 - T1 = 0     → no stale event (bug)
+//
+// Classification: LOCAL_SYNTHETIC
+// Specification : REG-FEED-STALE-001 / S2-REQ-004
+
+// ── Test: Exact Threshold (499,999,999 ns vs 500,000,001 ns) ───────────────
+TEST_F(GapFrameworkTest, StaleThresholdExactBoundaries) {
+    egbos::l0::FeedIngestor ingestor(&market_events_, &gov_flags_, -1);
+
+    constexpr uint64_t T0 = 1'000'000'000ULL;
+    uint8_t payload[128]{};
+    egbos::shm::MarketEventSlot slot;
+
+    // First frame at T0
+    size_t len = make_payload(payload, 1ULL);
+    ingestor.process_payload(payload, len, T0);
+    ASSERT_TRUE(market_events_.pop(slot)); // Consume normal event
+
+    // Check at exactly 499,999,999 ns (under 500ms threshold)
+    constexpr uint64_t T_UNDER = T0 + 499'999'999ULL;
+    ingestor.check_staleness(T_UNDER);
+    EXPECT_FALSE(market_events_.pop(slot)) << "Must NOT emit stale at 499,999,999 ns";
+
+    // Check at exactly 500,000,000 ns (exactly on boundary, must NOT be stale per > check)
+    constexpr uint64_t T_EXACT = T0 + 500'000'000ULL;
+    ingestor.check_staleness(T_EXACT);
+    EXPECT_FALSE(market_events_.pop(slot)) << "Must NOT emit stale at exact 500,000,000 ns";
+
+    // Check at exactly 500,000,001 ns (over 500ms threshold)
+    constexpr uint64_t T_OVER = T0 + 500'000'001ULL;
+    ingestor.check_staleness(T_OVER);
+    ASSERT_TRUE(market_events_.pop(slot)) << "Must emit stale at 500,000,001 ns";
+    EXPECT_EQ(slot.data[0], 0xFF);
+    EXPECT_EQ(slot.data[1], 2); // FEED_STALE
+}
+
+TEST_F(GapFrameworkTest, StaleDetected_WhenCheckStalenessPrecedesProcessPayload) {
+    // Tier-0 durability disabled (-1 fd) so the test is not influenced by
+    // fsync timing; this matches the staleness-only test pattern used by
+    // ClockContract_TimestampIsNonZeroAfterFirstPacket above.
+    egbos::l0::FeedIngestor ingestor(&market_events_, &gov_flags_, -1);
+
+    constexpr uint64_t T0 = 1'000'000'000ULL;          // 1 s
+    constexpr uint64_t T1 = T0 + 500'000'000ULL + 1ULL; // > 500 ms later
+
+    uint8_t payload[128]{};
+
+    // Step 1: first frame arrives at T0.
+    size_t len = make_payload(payload, 1ULL);
+    ingestor.process_payload(payload, len, T0);
+
+    // Consume the normal market event.
+    egbos::shm::MarketEventSlot slot;
+    ASSERT_TRUE(market_events_.pop(slot)) << "Expected normal event after T0 frame";
+    EXPECT_NE(slot.data[0], 0xFF) << "T0 frame must not be synthetic";
+
+    // Step 2 (the fix): evaluate staleness BEFORE processing the T1 frame.
+    // This mirrors the fixed run_loop() ordering:
+    //   check_staleness(T1) — sees idle = T1 - T0 > 500ms → STALE
+    ingestor.check_staleness(T1);
+
+    // Exactly one STALE synthetic event must be observable.
+    ASSERT_TRUE(market_events_.pop(slot))
+        << "STALE synthetic event expected: gap T0->T1 > 500ms was not detected";
+    EXPECT_EQ(slot.data[0], 0xFF) << "Synthetic marker must be 0xFF";
+    EXPECT_EQ(slot.data[1], 2)    << "Event type must be STALE (2)";
+
+    // No second stale event from the same check_staleness call.
+    EXPECT_FALSE(market_events_.pop(slot))
+        << "Duplicate stale event: check_staleness must emit at most one event";
+
+    // Step 3: the T1 frame arrives (process_payload overwrites last_recv_time_ns_
+    // and transitions state back to FEED_NORMAL).
+    len = make_payload(payload, 2ULL);
+    ingestor.process_payload(payload, len, T1);
+
+    // Consume the normal T1 market event.
+    ASSERT_TRUE(market_events_.pop(slot)) << "Expected normal event after T1 frame";
+    EXPECT_NE(slot.data[0], 0xFF) << "T1 frame must not be synthetic";
+
+    // Step 4: verify no duplicate stale event is emitted for the same gap
+    // when the next staleness check runs at T1 (ingestor is now FEED_NORMAL).
+    ingestor.check_staleness(T1);
+    EXPECT_FALSE(market_events_.pop(slot))
+        << "Duplicate stale event on second check_staleness(T1): gap already resolved";
+}
+
+// ── Test: wrong ordering would miss the stale event (documents the pre-fix bug) ─
+//
+// If process_payload is called BEFORE check_staleness (the pre-fix order),
+// the stale gap between T0 and T1 is invisible.  This test asserts that the
+// correct (post-fix) ordering is REQUIRED to observe the event.
+//
+// The test drives FeedIngestor directly with the wrong ordering and verifies
+// that no STALE event is produced — confirming that the listener ordering fix
+// (check_staleness before process_payload) is the necessary and sufficient
+// condition.
+//
+// Classification: LOCAL_SYNTHETIC
+TEST_F(GapFrameworkTest, NoStaleDetected_WhenProcessPayloadPrecedesCheckStaleness) {
+    egbos::l0::FeedIngestor ingestor(&market_events_, &gov_flags_, -1);
+
+    constexpr uint64_t T0 = 1'000'000'000ULL;
+    constexpr uint64_t T1 = T0 + 500'000'000ULL + 1ULL;
+
+    uint8_t payload[128]{};
+
+    // T0 frame.
+    size_t len = make_payload(payload, 1ULL);
+    ingestor.process_payload(payload, len, T0);
+    egbos::shm::MarketEventSlot slot;
+    ASSERT_TRUE(market_events_.pop(slot));
+
+    // WRONG order (pre-fix): process_payload first, then check_staleness.
+    len = make_payload(payload, 2ULL);
+    ingestor.process_payload(payload, len, T1); // overwrites last_recv_time_ns_
+    ASSERT_TRUE(market_events_.pop(slot));       // consume normal T1 event
+
+    ingestor.check_staleness(T1); // idle = T1 - T1 = 0 → no stale event
+
+    EXPECT_FALSE(market_events_.pop(slot))
+        << "Pre-fix ordering hides the stale gap: no STALE event is emitted "
+           "(this is the bug that the run_loop fix resolves)";
+}
+
 
 
 // V4 promotion of CLAIM-L0-002 requires an artifact with the following fields.

@@ -71,7 +71,8 @@ TEST_F(TimestampInjectionTest, InjectTimestampAndVerifyABI) {
 
 // 7. Stale detection uses the injected timestamp
 TEST_F(TimestampInjectionTest, StaleDetectionUsesInjectedTimestamp) {
-    egbos::l0::FeedIngestor ingestor(&market_events, &gov_flags, tier0_fd);
+    // Pure timestamp/staleness test: Tier-0 durability is not under test.
+    egbos::l0::FeedIngestor ingestor(&market_events, &gov_flags, -1);
 
     // Provide valid Binance @depth JSON so the L0 normalizer emits an event.
     const char* json_payload =

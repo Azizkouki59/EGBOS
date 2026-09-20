@@ -243,6 +243,11 @@ ParseResult parse_price_qty_array(const uint8_t*& p, const uint8_t* end, std::ar
         r = parse_fixed_point(qty_str, qty_len, kPriceScale, qty_val);
         if (r != ParseResult::OK) return r;
 
+        // S6-REQ-002: Deterministic parser-level bounds rejection for LOB quantities.
+        if (qty_val < 0 || qty_val > 0xFFFFFFFFLL) {
+            return ParseResult::OVERFLOW;
+        }
+
         arr[count].price = price_val;
         arr[count].qty = qty_val;
         count++;

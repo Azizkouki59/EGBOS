@@ -59,6 +59,17 @@ target_link_libraries(engine_l0_trading PUBLIC
 )
 
 
+# ── L1 Compiled target ──
+# depth_parser.cpp + l1_consumer.cpp require compiled object code.
+add_library(engine_l1 STATIC
+    l1/depth_parser.cpp
+    l1/l1_consumer.cpp
+    l1/lob_engine.cpp
+)
+target_include_directories(engine_l1 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR})
+target_link_libraries(engine_l1 PUBLIC engine_core)
+target_compile_features(engine_l1 PUBLIC cxx_std_20)
+
 install(TARGETS engine_core EXPORT egbosTargets)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ DESTINATION include/engine FILES_MATCHING PATTERN "*.h")
 

@@ -47,6 +47,31 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_compile_features(test_gap_detection PRIVATE cxx_std_20)
   gtest_discover_tests(test_gap_detection)
 
+  # S2/S5: Tier-0 write gate regression.
+  # A Tier-0 I/O failure must prevent publication to the L0->L1 SPSC ring.
+  # Linux-only because /dev/full is used as a deterministic write-failure device.
+  add_executable(test_tier0_write_failure
+    test_tier0_write_failure.cpp
+    ../l0/ingestor.cpp
+    ../l0/binance_json_normalizer.cpp
+  )
+  target_link_libraries(test_tier0_write_failure PRIVATE
+    engine_core GTest::gtest GTest::gtest_main flatbuffers)
+  target_compile_features(test_tier0_write_failure PRIVATE cxx_std_20)
+  gtest_discover_tests(test_tier0_write_failure)
+
+  # S2/AD-003: Tier-0 threshold durability regression.
+  add_executable(test_tier0_threshold
+    test_tier0_threshold.cpp
+    ../l0/ingestor.cpp
+    ../l0/binance_json_normalizer.cpp
+  )
+  target_link_libraries(test_tier0_threshold PRIVATE
+    engine_core GTest::gtest GTest::gtest_main flatbuffers)
+  target_compile_features(test_tier0_threshold PRIVATE cxx_std_20)
+  target_link_options(test_tier0_threshold PRIVATE "-Wl,--wrap=fsync")
+  gtest_discover_tests(test_tier0_threshold)
+
   add_executable(test_lob_determinism test_lob_determinism.cpp ../l1/lob_engine.cpp ../l0/ingestor.cpp ../l0/binance_json_normalizer.cpp)
   target_link_libraries(test_lob_determinism PRIVATE engine_core GTest::gtest GTest::gtest_main flatbuffers)
   target_compile_features(test_lob_determinism PRIVATE cxx_std_20)
@@ -55,6 +80,19 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   add_executable(test_lob_fuzz test_lob_fuzz.cpp ../l1/lob_engine.cpp ../l0/ingestor.cpp ../l0/binance_json_normalizer.cpp)
   target_link_libraries(test_lob_fuzz PRIVATE engine_core GTest::gtest GTest::gtest_main flatbuffers)
   target_compile_features(test_lob_fuzz PRIVATE cxx_std_20)
+
+  # ── S2-REQ-007: LibFuzzer harness for LOB engine ──
+  # NOTE: test_lob_fuzz above is misconfigured as a gtest binary linking
+  # GTest::gtest_main, which silently discards LLVMFuzzerTestOneInput and
+  # runs 0 tests. This is the working fuzzer. Fixed in S6, requires clang.
+  # -fsanitize=fuzzer is Clang-only; GCC does not support it.
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_executable(test_lob_fuzz_run test_lob_fuzz.cpp ../l1/lob_engine.cpp ../l0/ingestor.cpp ../l0/binance_json_normalizer.cpp)
+    target_link_libraries(test_lob_fuzz_run PRIVATE engine_core flatbuffers)
+    target_compile_features(test_lob_fuzz_run PRIVATE cxx_std_20)
+    target_compile_options(test_lob_fuzz_run PRIVATE -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all)
+    target_link_options(test_lob_fuzz_run PRIVATE -fsanitize=fuzzer,address,undefined)
+  endif()
 
   # ── S3 Targets (L3, L4) ──
   add_executable(position_engine_test position_engine_test.cpp ../core/position_engine.cpp)
@@ -100,6 +138,31 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_link_libraries(test_timestamp_injection PRIVATE engine_core GTest::gtest GTest::gtest_main flatbuffers)
   target_compile_features(test_timestamp_injection PRIVATE cxx_std_20)
   gtest_discover_tests(test_timestamp_injection)
+
+  # Exact Binance screenshot book: RAW -> L0 -> L1 -> LOB parity test.
+  add_executable(test_exact_market_pipeline
+    test_exact_market_pipeline.cpp
+    ../l0/ingestor.cpp
+    ../l0/binance_json_normalizer.cpp
+    ../l1/l1_consumer.cpp
+    ../l1/lob_engine.cpp
+  )
+  target_link_libraries(test_exact_market_pipeline PRIVATE engine_core GTest::gtest GTest::gtest_main flatbuffers)
+  target_compile_features(test_exact_market_pipeline PRIVATE cxx_std_20)
+  gtest_discover_tests(test_exact_market_pipeline)
+
+  add_executable(test_cli_production_parity
+    test_cli_production_parity.cpp
+    ../l0/ingestor.cpp
+    ../l0/binance_json_normalizer.cpp
+    ../l1/depth_parser.cpp
+    ../l1/l1_consumer.cpp
+    ../l1/lob_engine.cpp
+  )
+  target_link_libraries(test_cli_production_parity PRIVATE engine_core GTest::gtest GTest::gtest_main flatbuffers)
+  target_compile_features(test_cli_production_parity PRIVATE cxx_std_20)
+  gtest_discover_tests(test_cli_production_parity)
+
 
   # S5-REQ-002: End-to-End Timestamp Determinism Proof.
   add_executable(test_replay_timestamp_determinism test_replay_timestamp_determinism.cpp ../l0/ingestor.cpp ../l0/binance_json_normalizer.cpp)
@@ -182,6 +245,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_link_libraries(test_binance_frame_semantics PRIVATE engine_core GTest::gtest GTest::gtest_main)
   target_compile_features(test_binance_frame_semantics PRIVATE cxx_std_20)
   gtest_discover_tests(test_binance_frame_semantics)
+  
+  add_executable(test_binance_frame_callback test_binance_frame_callback.cpp ../l0/live_feed_listener.cpp ../l0/ingestor.cpp ../l0/binance_json_normalizer.cpp ../l1/lob_engine.cpp ../l1/depth_parser.cpp ../l1/l1_consumer.cpp)
+  target_link_libraries(test_binance_frame_callback PRIVATE engine_core engine_l0_market_data flatbuffers GTest::gtest GTest::gtest_main)
+  target_compile_features(test_binance_frame_callback PRIVATE cxx_std_20)
+  gtest_discover_tests(test_binance_frame_callback)
+  
+  add_executable(test_cli_sync_replay test_cli_sync_replay.cpp ../l1/lob_engine.cpp ../l1/depth_parser.cpp)
+  target_link_libraries(test_cli_sync_replay PRIVATE engine_core GTest::gtest GTest::gtest_main)
+  target_compile_features(test_cli_sync_replay PRIVATE cxx_std_20)
+  gtest_discover_tests(test_cli_sync_replay)
 
 
 endif()
@@ -193,6 +266,10 @@ target_compile_features(live_pipeline_diagnostic PRIVATE cxx_std_20)
 add_executable(e2e_live_diagnostic ../../scripts/e2e_live_diagnostic.cpp)
 target_link_libraries(e2e_live_diagnostic PRIVATE engine_core engine_l0_market_data engine_l1 flatbuffers OpenSSL::SSL OpenSSL::Crypto)
 target_compile_features(e2e_live_diagnostic PRIVATE cxx_std_20)
+
+add_executable(egbos_binance_cli ../../scripts/egbos_binance_cli.cpp)
+target_link_libraries(egbos_binance_cli PRIVATE engine_core engine_l0_market_data engine_l1 nlohmann_json::nlohmann_json OpenSSL::SSL OpenSSL::Crypto pthread)
+target_compile_features(egbos_binance_cli PRIVATE cxx_std_20)
 
 # S5-REQ-005: structural market-data/trading binary boundary regression guard.
 # Verifies built S5 market-data binaries contain no order-entry implementation

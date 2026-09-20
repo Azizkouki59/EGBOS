@@ -1594,7 +1594,7 @@ All exchange-native formats are normalized to the canonical `RawMarketEvent` Fla
 
 ### C1.5 — Tier-0 Write Path
 
-The Tier-0 raw event log is append-only. The L0 ingestor writes every `RawMarketEvent` to Tier-0 **before** forwarding to the SPSC ring. This ordering is the foundation of P-003: if the system crashes after Tier-0 write but before SPSC forward, the event is recoverable from Tier-0. If the system crashes after SPSC forward but before Tier-0 write, the event is lost — this ordering is therefore structurally forbidden.
+The Tier-0 raw event log is append-only. The L0 ingestor writes each normalized event as the canonical 128-byte `MarketEventSlot` (bytes 0-63 `RawMarketEvent`; bytes 64-127 `SlotFrameMetadata`) to Tier-0 **before** forwarding to the SPSC ring. This ordering is the foundation of P-003: if the system crashes after Tier-0 write but before SPSC forward, the event is recoverable from Tier-0. If the system crashes after SPSC forward but before Tier-0 write, the event is lost — this ordering is therefore structurally forbidden.
 [code] 
     // Mandatory write ordering in L0 ingestor hot path
     // CORRECT — enforced by code review + CLAIM-L0-001

@@ -17,7 +17,13 @@ LobEngine::LobEngine(int64_t anchor_price, int64_t tick_size) noexcept
 
 int32_t LobEngine::price_to_index(int64_t price) const noexcept {
     // S2-REQ-006: O(1) index calculation using fixed point math
-    int64_t diff = price - anchor_price_;
+    // Uses __builtin_sub_overflow to detect overflow without invoking UB;
+    // any plain subtraction between arbitrary int64_t values can overflow.
+    // See crash-70b360f1831aa3254453f07c90340be34b3aa410.
+    int64_t diff;
+    if (__builtin_sub_overflow(price, anchor_price_, &diff)) {
+        return (price < anchor_price_) ? 0 : static_cast<int32_t>(kMaxPriceLevels) - 1;
+    }
     int64_t ticks = diff / tick_size_;
     int32_t index = static_cast<int32_t>(kMaxPriceLevels / 2 + ticks);
     // Boundary clamp for safety
@@ -27,8 +33,19 @@ int32_t LobEngine::price_to_index(int64_t price) const noexcept {
 }
 
 int64_t LobEngine::index_to_price(int32_t index) const noexcept {
+    // Overflow-safe: see crash-70b360f1831aa3254453f07c90340be34b3aa410
+    // for the analogous bug in price_to_index. Saturates rather than
+    // invoking UB on out-of-range index values.
     int64_t ticks = index - static_cast<int32_t>(kMaxPriceLevels / 2);
-    return anchor_price_ + ticks * tick_size_;
+    int64_t offset;
+    if (__builtin_mul_overflow(ticks, tick_size_, &offset)) {
+        return (ticks < 0) ? INT64_MIN : INT64_MAX;
+    }
+    int64_t price;
+    if (__builtin_add_overflow(anchor_price_, offset, &price)) {
+        return (offset < 0) ? INT64_MIN : INT64_MAX;
+    }
+    return price;
 }
 
 void LobEngine::link_node(int32_t price_index, OrderNode* node, bool is_bid) noexcept {
@@ -206,18 +223,16 @@ void LobEngine::apply_depth_update(const ParsedDepthUpdate& update) noexcept {
     for (std::size_t i = 0; i < update.bid_count; ++i) {
         const int64_t price = update.bids[i].price;
         const int64_t qty   = update.bids[i].qty;
-        // qty is int64_t from depth_parser; safe cast: Binance quantities are
-        // non-negative and well within uint32_t range at any typical LOB depth.
-        const uint32_t qty32 = (qty > 0) ? static_cast<uint32_t>(qty) : 0u;
-        upsert_synthetic_level(price, qty32, /*is_bid=*/true);
+        
+        upsert_synthetic_level(price, static_cast<uint32_t>(qty), /*is_bid=*/true);
         ++levels_applied_;
     }
     // Apply all ask levels from the frame.
     for (std::size_t i = 0; i < update.ask_count; ++i) {
         const int64_t price = update.asks[i].price;
         const int64_t qty   = update.asks[i].qty;
-        const uint32_t qty32 = (qty > 0) ? static_cast<uint32_t>(qty) : 0u;
-        upsert_synthetic_level(price, qty32, /*is_bid=*/false);
+        
+        upsert_synthetic_level(price, static_cast<uint32_t>(qty), /*is_bid=*/false);
         ++levels_applied_;
     }
     // Advance the local book's update ID to the frame's final_update_id.

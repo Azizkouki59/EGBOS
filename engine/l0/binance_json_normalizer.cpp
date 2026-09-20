@@ -146,13 +146,19 @@ L0ParseStatus parse_fixed_point(const uint8_t* str, std::size_t len,
     if (p < end && *p == '.') {
         ++p;
         while (p < end && *p >= '0' && *p <= '9') {
+            const int64_t d = *p - '0';
+
             if (frac_scale < kL0PriceScale) {
-                int64_t d = *p - '0';
+                // Digits within the configured fixed-point precision.
                 frac_part = frac_part * 10 + d;
                 frac_scale *= 10;
             } else {
-                return L0ParseStatus::PRECISION_EXCEEDED;
+                // Accept exchange-side zero-padding beyond the fixed-point
+                // precision, but never silently round a non-zero digit.
+                if (d != 0)
+                    return L0ParseStatus::PRECISION_EXCEEDED;
             }
+
             ++p;
         }
     }
@@ -285,6 +291,11 @@ L0ParseStatus parse_side_array(
 } // anonymous namespace
 
 // ── normalize_binance_depth ───────────────────────────────────────────────────
+// The Binance JSON object key order is not semantically significant.
+// We therefore parse the frame twice:
+//   Pass 1: validate and collect e/U/u before emitting anything.
+//   Pass 2: parse b/a and emit levels with stable frame metadata.
+// This remains zero-allocation and prevents U/u==0 when b/a precede U/u.
 L0ParseStatus normalize_binance_depth(
     const uint8_t*  json,
     std::size_t     length,
@@ -294,36 +305,39 @@ L0ParseStatus normalize_binance_depth(
 {
     if (!json || length == 0) return L0ParseStatus::TRUNCATED;
 
+    // ── Pass 1: collect frame metadata without emitting events ───────────────
     const uint8_t* p   = json;
     const uint8_t* end = json + length;
 
     skip_ws(p, end);
     if (p == end || *p != '{') return L0ParseStatus::TRUNCATED;
-    ++p; // skip '{'
+    ++p;
 
-    // Fields we must find: e (event type), u (final_update_id), b, a.
-    // U (first_update_id) is read but not used — gap detection is deferred.
-    uint32_t found_mask = 0;
-    // bit 0: e, bit 1: u, bit 2: b, bit 3: a
-    static constexpr uint32_t kAllRequired = 0x0F;
+    uint32_t metadata_mask = 0;
+    // bit 0: e, bit 1: u, bit 2: U
+    static constexpr uint32_t kMetadataRequired = 0x07;
 
     uint64_t first_update_id = 0;
     uint64_t final_update_id = 0;
-    std::size_t level_count  = 0;
 
     while (p < end) {
         skip_ws(p, end);
         if (p == end) return L0ParseStatus::TRUNCATED;
-        if (*p == '}') { ++p; break; }
+        if (*p == '}') {
+            ++p;
+            break;
+        }
 
-        // Key must start with '"'
         if (*p != '"') return L0ParseStatus::TRUNCATED;
         ++p;
+
         const uint8_t* key_start = p;
         p = find_quote(p, end);
         if (!p) return L0ParseStatus::TRUNCATED;
-        std::size_t key_len = static_cast<std::size_t>(p - key_start);
-        ++p; // skip closing quote
+
+        const std::size_t key_len =
+            static_cast<std::size_t>(p - key_start);
+        ++p;
 
         skip_ws(p, end);
         if (p == end || *p != ':') return L0ParseStatus::TRUNCATED;
@@ -331,62 +345,48 @@ L0ParseStatus normalize_binance_depth(
         skip_ws(p, end);
 
         if (key_len == 1) {
-            char k = static_cast<char>(key_start[0]);
+            const char k = static_cast<char>(key_start[0]);
 
             if (k == 'e') {
-                // Value must be "depthUpdate"
-                const uint8_t* val; std::size_t val_len;
+                const uint8_t* val;
+                std::size_t val_len;
+
                 L0ParseStatus r = extract_string(p, end, val, val_len);
                 if (r != L0ParseStatus::OK) return r;
-                if (val_len != 11 || std::memcmp(val, "depthUpdate", 11) != 0)
+
+                if (val_len != 11 ||
+                    std::memcmp(val, "depthUpdate", 11) != 0)
                     return L0ParseStatus::WRONG_EVENT_TYPE;
-                found_mask |= 1;
+
+                metadata_mask |= 1;
 
             } else if (k == 'u') {
-                // final_update_id (bare integer)
                 const uint8_t* num_start = p;
+
                 L0ParseStatus r = skip_value(p, end);
                 if (r != L0ParseStatus::OK) return r;
+
                 r = parse_uint64(num_start, p, final_update_id);
                 if (r != L0ParseStatus::OK) return r;
-                found_mask |= 2;
+
+                metadata_mask |= 2;
 
             } else if (k == 'U') {
-                // first_update_id — used for frame-level gap detection in L1
                 const uint8_t* num_start = p;
+
                 L0ParseStatus r = skip_value(p, end);
                 if (r != L0ParseStatus::OK) return r;
+
                 r = parse_uint64(num_start, p, first_update_id);
                 if (r != L0ParseStatus::OK) return r;
 
-            } else if (k == 'b') {
-                L0ParseStatus r = parse_side_array(
-                    p, end,
-                    egbos::events::Side_BUY,
-                    /*first_update_id=*/  first_update_id,
-                    /*sequence_num=*/     final_update_id, // may be 0 if 'u' not yet seen
-                    ingestion_tsc,
-                    level_count, cb, user_ctx);
-                if (r != L0ParseStatus::OK) return r;
-                found_mask |= 4;
-
-            } else if (k == 'a') {
-                L0ParseStatus r = parse_side_array(
-                    p, end,
-                    egbos::events::Side_SELL,
-                    /*first_update_id=*/  first_update_id,
-                    /*sequence_num=*/     final_update_id,
-                    ingestion_tsc,
-                    level_count, cb, user_ctx);
-                if (r != L0ParseStatus::OK) return r;
-                found_mask |= 8;
+                metadata_mask |= 4;
 
             } else {
                 L0ParseStatus r = skip_value(p, end);
                 if (r != L0ParseStatus::OK) return r;
             }
         } else {
-            // Multi-char key (E, s, pu, …) — skip value
             L0ParseStatus r = skip_value(p, end);
             if (r != L0ParseStatus::OK) return r;
         }
@@ -402,10 +402,119 @@ L0ParseStatus normalize_binance_depth(
         }
     }
 
-    if ((found_mask & kAllRequired) != kAllRequired)
+    if ((metadata_mask & kMetadataRequired) != kMetadataRequired)
+        return L0ParseStatus::MISSING_FIELD;
+
+    // Binance diff-depth continuity requires a valid update range.
+    if (first_update_id > final_update_id)
+        return L0ParseStatus::NUMERIC_PARSE_FAILURE;
+
+    // ── Pass 2: parse b/a and emit only after U/u are known ───────────────────
+    p = json;
+
+    skip_ws(p, end);
+    if (p == end || *p != '{') return L0ParseStatus::TRUNCATED;
+    ++p;
+
+    uint32_t found_mask = 0;
+    // bit 0: e, bit 1: b, bit 2: a
+    static constexpr uint32_t kRequiredOutputFields = 0x07;
+
+    std::size_t level_count = 0;
+
+    while (p < end) {
+        skip_ws(p, end);
+        if (p == end) return L0ParseStatus::TRUNCATED;
+        if (*p == '}') {
+            ++p;
+            break;
+        }
+
+        if (*p != '"') return L0ParseStatus::TRUNCATED;
+        ++p;
+
+        const uint8_t* key_start = p;
+        p = find_quote(p, end);
+        if (!p) return L0ParseStatus::TRUNCATED;
+
+        const std::size_t key_len =
+            static_cast<std::size_t>(p - key_start);
+        ++p;
+
+        skip_ws(p, end);
+        if (p == end || *p != ':') return L0ParseStatus::TRUNCATED;
+        ++p;
+        skip_ws(p, end);
+
+        if (key_len == 1) {
+            const char k = static_cast<char>(key_start[0]);
+
+            if (k == 'e') {
+                // Already validated in pass 1; consume it here as well.
+                const uint8_t* val;
+                std::size_t val_len;
+
+                L0ParseStatus r = extract_string(p, end, val, val_len);
+                if (r != L0ParseStatus::OK) return r;
+
+                if (val_len != 11 ||
+                    std::memcmp(val, "depthUpdate", 11) != 0)
+                    return L0ParseStatus::WRONG_EVENT_TYPE;
+
+                found_mask |= 1;
+
+            } else if (k == 'b') {
+                L0ParseStatus r = parse_side_array(
+                    p, end,
+                    egbos::events::Side_BUY,
+                    first_update_id,
+                    final_update_id,
+                    ingestion_tsc,
+                    level_count,
+                    cb,
+                    user_ctx);
+
+                if (r != L0ParseStatus::OK) return r;
+                found_mask |= 2;
+
+            } else if (k == 'a') {
+                L0ParseStatus r = parse_side_array(
+                    p, end,
+                    egbos::events::Side_SELL,
+                    first_update_id,
+                    final_update_id,
+                    ingestion_tsc,
+                    level_count,
+                    cb,
+                    user_ctx);
+
+                if (r != L0ParseStatus::OK) return r;
+                found_mask |= 4;
+
+            } else {
+                // U/u and all other fields were fully validated in pass 1.
+                L0ParseStatus r = skip_value(p, end);
+                if (r != L0ParseStatus::OK) return r;
+            }
+        } else {
+            L0ParseStatus r = skip_value(p, end);
+            if (r != L0ParseStatus::OK) return r;
+        }
+
+        skip_ws(p, end);
+        if (p < end && *p == ',') {
+            ++p;
+        } else if (p < end && *p == '}') {
+            ++p;
+            break;
+        } else {
+            return L0ParseStatus::TRUNCATED;
+        }
+    }
+
+    if ((found_mask & kRequiredOutputFields) != kRequiredOutputFields)
         return L0ParseStatus::MISSING_FIELD;
 
     return L0ParseStatus::OK;
 }
-
 } // namespace egbos::l0

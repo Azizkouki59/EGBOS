@@ -45,6 +45,94 @@ protected:
 // See: Option-A passthrough patch, 2026-09-12. CLAIM-L0-002 remains at V3.
 // To re-implement: extract U/u update IDs from Binance JSON using a
 // zero-allocation parser (requires ADR approval per GC-E-010).
+
+namespace {
+
+struct NormalizerSeen {
+    int count = 0;
+    uint64_t first_update_id = 0;
+    uint64_t final_update_id = 0;
+};
+
+bool collect_normalized(
+    const egbos::events::RawMarketEvent& event,
+    uint64_t first_update_id,
+    uint32_t,
+    void* ctx) noexcept
+{
+    auto* seen = static_cast<NormalizerSeen*>(ctx);
+    ++seen->count;
+    seen->first_update_id = first_update_id;
+    seen->final_update_id = event.sequence_num();
+    return true;
+}
+
+} // namespace
+
+TEST(NormalizerTest, FieldsMayAppearBeforeUpdateIds) {
+    // JSON object member order is not semantically significant.
+    // b/a intentionally appear before U/u. Every emitted level must still
+    // carry the frame's real U/u metadata.
+    const std::string json = R"({
+        "e":"depthUpdate",
+        "E":123,
+        "s":"BTCUSDT",
+        "b":[["100000.12345000","0.06498000"]],
+        "a":[["100001.00000000","0.01000000"]],
+        "U":100348390124,
+        "u":100348390125
+    })";
+
+    NormalizerSeen seen{};
+
+    const auto status = egbos::l0::normalize_binance_depth(
+        reinterpret_cast<const uint8_t*>(json.data()),
+        json.size(),
+        12345,
+        collect_normalized,
+        &seen);
+
+    ASSERT_EQ(status, egbos::l0::L0ParseStatus::OK);
+    EXPECT_EQ(seen.count, 2);
+    EXPECT_EQ(seen.first_update_id, 100348390124ULL);
+    EXPECT_EQ(seen.final_update_id, 100348390125ULL);
+}
+
+TEST(NormalizerTest, NonZeroExcessPrecisionIsRejected) {
+    // 6th decimal digit is non-zero; L0 scale is 1e5, so no silent rounding.
+    const std::string json =
+        R"({"e":"depthUpdate","U":1,"u":1,"b":[["1.123456","1.0"]],"a":[]})";
+
+    NormalizerSeen seen{};
+
+    const auto status = egbos::l0::normalize_binance_depth(
+        reinterpret_cast<const uint8_t*>(json.data()),
+        json.size(),
+        12345,
+        collect_normalized,
+        &seen);
+
+    EXPECT_EQ(status, egbos::l0::L0ParseStatus::PRECISION_EXCEEDED);
+}
+
+TEST(NormalizerTest, TrailingZeroPaddingIsAccepted) {
+    const std::string json =
+        R"({"e":"depthUpdate","U":1,"u":1,"b":[["1.12345000","0.06498000"]],"a":[]})";
+
+    NormalizerSeen seen{};
+
+    const auto status = egbos::l0::normalize_binance_depth(
+        reinterpret_cast<const uint8_t*>(json.data()),
+        json.size(),
+        12345,
+        collect_normalized,
+        &seen);
+
+    ASSERT_EQ(status, egbos::l0::L0ParseStatus::OK);
+    EXPECT_EQ(seen.count, 1);
+}
+
+
 TEST_F(GapDetectionTest, PassthroughAllPayloads_S2REQ002NotYetImplemented) {
     egbos::l0::FeedIngestor ingestor(&market_events, &gov_flags, tier0_fd);
 
@@ -73,7 +161,9 @@ TEST_F(GapDetectionTest, PassthroughAllPayloads_S2REQ002NotYetImplemented) {
 
 
 TEST_F(GapDetectionTest, DetectsStalenessAndEmitsEvent) {
-    egbos::l0::FeedIngestor ingestor(&market_events, &gov_flags, tier0_fd);
+    // Pure state-machine test: disable Tier-0 durability so /dev/null fsync
+    // cannot mask the expected FeedStaleEvent.
+    egbos::l0::FeedIngestor ingestor(&market_events, &gov_flags, -1);
     
     // Must initialize last_recv_time_ns_ internally first
     ingestor.check_staleness(0);

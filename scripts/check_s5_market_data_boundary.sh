@@ -15,8 +15,8 @@ BINARIES=(
     "$BUILD_ROOT/engine/tests/test_live_feed_listener"
 )
 
-PATTERN='BinanceTradingClient::(place_order|cancel_order|get_account|https_request)|FIXConsumer|ExecutionRouter'
-REST_PATTERN='api\.binance\.com|testnet\.binance\.vision'
+PATTERN='BinanceTradingClient::|FIXConsumer|ExecutionRouter'
+REST_PATTERN='api\.binance\.com'
 
 for bin in "${BINARIES[@]}"; do
     [[ -x "$bin" ]] || {

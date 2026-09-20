@@ -14,6 +14,11 @@
 
 namespace egbos::l1 {
 
+namespace {
+static constexpr uint8_t kSyntheticMarker   = 0xFF;
+static constexpr uint8_t kSyntheticStale    = 2;
+}
+
 // ── enter_degraded ────────────────────────────────────────────────────────────
 void L1Consumer::enter_degraded(const char* reason) noexcept {
     if (!degraded_) {
@@ -31,6 +36,20 @@ void L1Consumer::enter_degraded(const char* reason) noexcept {
 
 // ── process_slot ─────────────────────────────────────────────────────────────
 void L1Consumer::process_slot(const shm::MarketEventSlot& slot) noexcept {
+
+    // Synthetic/control events are not Binance depth frames.
+    // They intentionally do not carry Binance U/u metadata.
+    // Handle them before any frame-level sequence validation.
+    if (slot.data[0] == kSyntheticMarker) {
+        const uint8_t event_type = slot.data[1];
+
+        if (event_type == kSyntheticStale) {
+            enter_degraded("synthetic FeedStaleEvent");
+        }
+
+        return;
+    }
+
     if (degraded_) {
         counts_.skipped_while_degraded++;
         return;

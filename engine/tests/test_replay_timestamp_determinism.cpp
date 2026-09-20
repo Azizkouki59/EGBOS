@@ -183,7 +183,10 @@ TEST_F(ReplayTimestampDeterminismTest, ReplayDoesNotDependOnLocalClock) {
     // We inject T1 as the rx_timestamp_ns and then advance the staleness clock.
     auto replay_events = std::make_unique<egbos::shm::MarketEventsRegion>();
     std::memset(replay_events.get(), 0, sizeof(*replay_events));
-    egbos::l0::FeedIngestor replay_ingestor(replay_events.get(), &gov_flags_, tier0_fd_);
+    // Replay timing test: disable Tier-0 durability; the test validates
+    // deterministic stale detection from persisted/injected T1 only.
+    egbos::l0::FeedIngestor replay_ingestor(
+        replay_events.get(), &gov_flags_, -1);
 
     // Feed the event with its historical T1 (as if re-ingesting from Tier-0)
     len = build_payload(payload, sizeof(payload), 1ULL);

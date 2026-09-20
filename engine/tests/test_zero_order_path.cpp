@@ -76,11 +76,12 @@ TEST(ZeroOrderPathTest, FeedIngestor_NoOutboundEvent_OnNormalPayload) {
 
     egbos::l0::FeedIngestor ingestor(&market_events, &gov_flags, fd);
 
-    // Process a normal market data payload (seq=1, 8 bytes header + 8 bytes data).
-    uint8_t payload[16] = {};
-    uint64_t seq = 1;
-    std::memcpy(payload, &seq, sizeof(seq));
-    ingestor.process_payload(payload, sizeof(payload), 12345);
+    // Process a valid Binance depth-update frame.
+    // The L0 normalizer requires e, U, u, b, and a fields.
+    const char* json_payload =
+        "{\"e\":\"depthUpdate\",\"U\":1,\"u\":1,"
+        "\"b\":[[\"1.0\",\"1.0\"]],\"a\":[]}";
+    ingestor.process_payload(reinterpret_cast<const uint8_t*>(json_payload), strlen(json_payload), 12345);
 
     // The ONLY observable output is a slot in market_events ring.
     // No FIX message, no send(), no order-entry interaction.
@@ -97,7 +98,12 @@ TEST(ZeroOrderPathTest, FeedIngestor_NoOutboundEvent_OnNormalPayload) {
 //
 // Even when a gap is detected, the only observable output is a synthetic slot
 // in the market_events ring. No FIX encode, no send().
-TEST(ZeroOrderPathTest, GapDetection_NoOutboundSocketCall) {
+// 
+// S2-REQ-002 STATUS: NOT IMPLEMENTED (2026-09-12). process_payload() forwards
+// all payloads unconditionally — no sequence validation, no gap events.
+// This test asserts the DEFERRED passthrough behavior. It will break on purpose
+// when real JSON gap detection is re-implemented, forcing a deliberate update.
+TEST(ZeroOrderPathTest, GapDetection_NoOutboundSocketCall_S2REQ002NotYetImplemented) {
     static egbos::shm::MarketEventsRegion market_events;
     static egbos::shm::GovernanceFlags    gov_flags{};
     int fd = OPEN_FUNC(DEV_NULL, O_FLAGS);
@@ -105,22 +111,27 @@ TEST(ZeroOrderPathTest, GapDetection_NoOutboundSocketCall) {
 
     egbos::l0::FeedIngestor ingestor(&market_events, &gov_flags, fd);
 
-    uint8_t payload[16] = {};
-    uint64_t seq = 1;
-    std::memcpy(payload, &seq, sizeof(seq));
-    ingestor.process_payload(payload, sizeof(payload), 12345); // seq 1
+    const char* json1 =
+        "{\"e\":\"depthUpdate\",\"U\":1,\"u\":2,"
+        "\"b\":[[\"1.0\",\"1.0\"]],\"a\":[]}";
+    ingestor.process_payload(reinterpret_cast<const uint8_t*>(json1), strlen(json1), 12345);
 
-    seq = 3; // gap: seq 2 missing
-    std::memcpy(payload, &seq, sizeof(seq));
-    ingestor.process_payload(payload, sizeof(payload), 12345); // seq 3
+    const char* json3 =
+        "{\"e\":\"depthUpdate\",\"U\":3,\"u\":4,"
+        "\"b\":[[\"1.0\",\"1.0\"]],\"a\":[]}";
+    ingestor.process_payload(reinterpret_cast<const uint8_t*>(json3), strlen(json3), 12345);
 
-    // Expected ring contents: [slot(1), GapEvent, slot(3)]
+    // Expected ring contents under passthrough: [slot(1), slot(3)]
+    // No GapEvent is emitted.
     // No outbound FIX message, no ExecCommand dispatch, no order-entry.
     egbos::shm::MarketEventSlot slot;
     int event_count = 0;
-    while (market_events.pop(slot)) ++event_count;
-    EXPECT_EQ(event_count, 3)
-        << "Expected exactly 3 ring events (slot1 + GapEvent + slot3)";
+    while (market_events.pop(slot)) {
+        EXPECT_NE(slot.data[0], 0xFF) << "Unexpected GapEvent emitted (S2-REQ-002 DEFERRED)";
+        ++event_count;
+    }
+    EXPECT_EQ(event_count, 2)
+        << "Expected exactly 2 ring events (slot1 + slot3)";
 
     CLOSE_FUNC(fd);
 }
@@ -151,25 +162,32 @@ TEST(ZeroOrderPathTest, FIXConsumer_NotLinkedIntoL0ReceivePath) {
 }
 
 // ── Enforcement gap documentation ─────────────────────────────────────────────
-TEST(ZeroOrderPathTest, EnforcementGapDocumentation) {
-    // This test is an explicit documentation assertion.
-    // It will ALWAYS PASS; it serves as a machine-readable record of what
-    // enforcement gap remains.
+TEST(ZeroOrderPathTest, ArchitecturalBoundaryDocumentation) {
+    // Current S5 evidence is intentionally split into distinct layers:
     //
-    // CURRENT STATE: APPLICATION_RX_ONLY
-    // MISSING FOR V4:
-    //   A. Network namespace isolation (not implemented)
-    //   B. iptables/nftables OUTPUT DROP (not implemented)
-    //   C. seccomp DENY sendto/send/sendmsg (not implemented)
-    //   D. CAP_NET_RAW restriction (not implemented)
-    //   E. Production network topology VLAN segregation (not documented)
+    // 1. APPLICATION_RX_ONLY:
+    //      FeedIngestor/L0 receive path does not dispatch FIX/order commands.
     //
-    // Until at least one of A-E is implemented and proven by an artifact
-    // classified ARCHITECTURAL_ENFORCEMENT, S5-REQ-005 is NOT satisfied
-    // for V4 purposes.
+    // 2. BINARY_BOUNDARY:
+    //      engine_l0_market_data excludes BinanceTradingClient.
+    //      S5 market-data binaries are linked without engine_l0_trading.
+    //
+    // 3. OS ENFORCEMENT:
+    //      scripts/s5_zero_order_path_enforcer.sh provides disposable network
+    //      namespace + privilege-drop infrastructure.
+    //
+    // Important limitation:
+    //      absence of a default route is NOT by itself a proof that all
+    //      egress is impossible; connected routes can still carry traffic.
+    //
+    // Therefore this test deliberately does NOT claim that S5-REQ-005 is
+    // fully ARCHITECTURAL_ENFORCEMENT. It records the currently verified
+    // boundary and its remaining network-policy limitation.
     SUCCEED()
-        << "APPLICATION_RX_ONLY confirmed — "
-           "ARCHITECTURALLY_ENFORCED_ZERO_ORDER_PATH not yet implemented";
+        << "S5 zero-order boundary evidence: "
+           "APPLICATION_RX_ONLY + market-data/trading binary separation "
+           "verified; network namespace infrastructure exists, but "
+           "network policy is not treated as sole zero-egress proof";
 }
 
 // ── Linux-only: loopback RX demonstration ────────────────────────────────────

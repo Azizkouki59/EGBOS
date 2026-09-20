@@ -37,23 +37,18 @@ FetchContent_Declare(yaml-cpp
 )
 
 FetchContent_Declare(json
-  GIT_REPOSITORY https://github.com/nlohmann/json.git
-  GIT_TAG v3.11.3
-  GIT_SHALLOW TRUE
+  URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
 )
 
 FetchContent_Declare(googletest
-  GIT_REPOSITORY https://github.com/google/googletest.git
-  GIT_TAG v1.14.0
-  GIT_SHALLOW TRUE
+  URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz
 )
 
 FetchContent_Declare(flatbuffers
-  GIT_REPOSITORY https://github.com/google/flatbuffers.git
-  GIT_TAG v23.5.26
-  GIT_SHALLOW TRUE
+  URL https://github.com/google/flatbuffers/archive/refs/tags/v23.5.26.tar.gz
 )
 
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)  # yaml-cpp 0.8.0 declares cmake_minimum_required < 3.5
 FetchContent_MakeAvailable(yaml-cpp json googletest flatbuffers)
 
 add_subdirectory(schemas)

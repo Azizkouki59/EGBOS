@@ -111,7 +111,7 @@ inline constexpr std::size_t kMarketEventsSlotSize = 128;   // bytes per slot
 // We pad to the next page boundary (4096).
 inline constexpr std::size_t kMarketEventsRegionSize =
     ((kMarketEventsSlots * kMarketEventsSlotSize) + kPageSize) & ~(kPageSize - 1);
-inline constexpr const char* kMarketEventsPath = "/dev/shm/egbos_market_events";
+inline constexpr const char* kMarketEventsPath = "/egbos_market_events";
 
 // AD-006: ring size must be power of 2. Bitmask modulo depends on this.
 static_assert((kMarketEventsSlots & (kMarketEventsSlots - 1)) == 0,
@@ -141,7 +141,7 @@ inline constexpr std::size_t kLobSnapshotPerInstrumentBytes =
     
 inline constexpr std::size_t kLobSnapshotsRegionSize =
     kMaxInstruments * kLobSnapshotPerInstrumentBytes;
-inline constexpr const char* kLobSnapshotsPath = "/dev/shm/egbos_lob_snapshots";
+inline constexpr const char* kLobSnapshotsPath = "/egbos_lob_snapshots";
 
 static_assert(kLobSnapshotsRegionSize > 0,
     "kLobSnapshotsRegionSize must be non-zero (AD-006)");
@@ -160,7 +160,7 @@ static_assert(kLobSnapshotsRegionSize % kPageSize == 0,
 // ─────────────────────────────────────────────────────────────────────────────
 inline constexpr std::size_t kFeatureVectorBytes      = 256;
 inline constexpr std::size_t kFeatureVectorRegionSize = kPageSize; // page-aligned wrapper
-inline constexpr const char* kFeatureVectorPath = "/dev/shm/egbos_feature_vector";
+inline constexpr const char* kFeatureVectorPath = "/egbos_feature_vector";
 
 static_assert(kFeatureVectorBytes > 0,
     "kFeatureVectorBytes must be non-zero (AD-006)");
@@ -178,7 +178,7 @@ static_assert(kFeatureVectorRegionSize >= kFeatureVectorBytes + sizeof(uint64_t)
 //     L4 accesses this ONLY via CROSS_PLANE_READ (cross_plane.h, GC-E-045).
 // ─────────────────────────────────────────────────────────────────────────────
 inline constexpr std::size_t kPositionStateRegionSize = kPageSize;
-inline constexpr const char* kPositionStatePath = "/dev/shm/egbos_position_state";
+inline constexpr const char* kPositionStatePath = "/egbos_position_state";
 
 static_assert(kPositionStateRegionSize >= sizeof(int64_t),
     "kPositionStateRegionSize must fit at least one int64_t (gross_exposure_)");
@@ -195,7 +195,7 @@ static_assert(kPositionStateRegionSize % kPageSize == 0,
 //     Region is page-sized for mlock compatibility.
 // ─────────────────────────────────────────────────────────────────────────────
 inline constexpr std::size_t kRiskLimitsRegionSize = kPageSize;
-inline constexpr const char* kRiskLimitsPath = "/dev/shm/egbos_risk_limits";
+inline constexpr const char* kRiskLimitsPath = "/egbos_risk_limits";
 
 static_assert(kRiskLimitsRegionSize >= sizeof(int64_t) + sizeof(bool),
     "kRiskLimitsRegionSize must fit kill_switch (bool) + pos_limit (int64_t)");
@@ -212,7 +212,7 @@ inline constexpr std::size_t kExecCommandsSlots    = 4096;
 inline constexpr std::size_t kExecCommandsSlotSize = 64;    // bytes per slot
 inline constexpr std::size_t kExecCommandsRegionSize =
     kExecCommandsSlots * kExecCommandsSlotSize;             // 262,144 bytes
-inline constexpr const char* kExecCommandsPath = "/dev/shm/egbos_exec_commands";
+inline constexpr const char* kExecCommandsPath = "/egbos_exec_commands";
 
 static_assert((kExecCommandsSlots & (kExecCommandsSlots - 1)) == 0,
     "kExecCommandsSlots must be a power of 2 — "
@@ -233,7 +233,7 @@ static_assert(kExecCommandsSlotSize > 0,
 // ─────────────────────────────────────────────────────────────────────────────
 inline constexpr std::size_t kRegimeSignalBytes      = 1024;  // 1 KB payload
 inline constexpr std::size_t kRegimeSignalRegionSize = kPageSize;
-inline constexpr const char* kRegimeSignalPath = "/dev/shm/egbos_regime_signal";
+inline constexpr const char* kRegimeSignalPath = "/egbos_regime_signal";
 
 static_assert(kRegimeSignalBytes > 0,
     "kRegimeSignalBytes must be non-zero (AD-006)");
@@ -251,7 +251,7 @@ static_assert(kRegimeSignalRegionSize % kPageSize == 0,
 //     subsystem writes them. Reads go through std::atomic<bool> acquire loads.
 // ─────────────────────────────────────────────────────────────────────────────
 inline constexpr std::size_t kGovernanceFlagsRegionSize = kPageSize;
-inline constexpr const char* kGovernanceFlagsPath = "/dev/shm/egbos_governance_flags";
+inline constexpr const char* kGovernanceFlagsPath = "/egbos_governance_flags";
 
 static_assert(kGovernanceFlagsRegionSize >= 2 * sizeof(bool),
     "kGovernanceFlagsRegionSize must fit feed_stale and halt_required");

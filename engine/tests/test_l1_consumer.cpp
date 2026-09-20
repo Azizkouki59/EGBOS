@@ -192,3 +192,29 @@ TEST_F(L1ConsumerTest, LargeSequentialRun_NoDegraded) {
     EXPECT_EQ(n, 1000);
     EXPECT_FALSE(consumer->is_degraded());
 }
+
+
+// ── Synthetic STALE control event must not enter Binance U/u validation ─────
+TEST_F(L1ConsumerTest, SyntheticStaleEvent_DoesNotCreateSequenceGap) {
+    // First valid Binance frame.
+    push_event(ring, 100, 100);
+
+    // Exact encoding produced by FeedIngestor::emit_synthetic_event().
+    MarketEventSlot stale{};
+    stale.data[0] = 0xFF;
+    stale.data[1] = 2;  // FEED_STALE
+    const uint64_t timestamp = 123456789ULL;
+    std::memcpy(&stale.data[2], &timestamp, sizeof(timestamp));
+    ring.push(stale);
+
+    // This frame would be the valid next frame, but L1 remains degraded
+    // after the explicit STALE control event.
+    push_event(ring, 101, 101);
+
+    consumer->consume_available();
+
+    EXPECT_TRUE(consumer->is_degraded());
+    EXPECT_EQ(consumer->counts().sequence_gap_detected, 0);
+    EXPECT_EQ(consumer->counts().ok, 1);
+    EXPECT_EQ(consumer->counts().skipped_while_degraded, 1);
+}

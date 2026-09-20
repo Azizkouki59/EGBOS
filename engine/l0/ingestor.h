@@ -4,7 +4,8 @@
 // Specification  : S2-REQ-002, S2-REQ-003, S2-REQ-004 (Gaps, Stale Feeds, NVMe ordering)
 // Constraints    : Zero dynamic allocation (GC-E-010). 
 //                  Branch prediction bias on hot-path.
-//                  Append-only Tier-0 fsync via writev before SPSC push.
+//                  Append-only Tier-0 write before SPSC push.
+//                  Threshold fsync: 64KB or 5ms, whichever comes first.
 
 #pragma once
 
@@ -54,8 +55,14 @@ private:
     // Hot-path parsing and normalization.
     void normalize_and_forward(const uint8_t* event_data, std::size_t event_len, uint64_t rx_timestamp_ns) noexcept;
     
-    // Tier-0 NVMe durability using writev for zero-copy coalescing.
-    void tier0_append(const struct iovec* iov, int iovcnt) noexcept;
+    // Tier-0 append gate: complete write must succeed before SPSC publication.
+    [[nodiscard]] bool tier0_append(
+        const struct iovec* iov,
+        int iovcnt,
+        uint64_t now_ns) noexcept;
+
+    // Flush pending Tier-0 bytes when either threshold is reached.
+    [[nodiscard]] bool tier0_flush_if_due(uint64_t now_ns) noexcept;
 
     // Synthetic event emission (Gap / Stale)
     void emit_synthetic_event(uint64_t timestamp_ns, uint8_t event_type) noexcept;
@@ -64,15 +71,30 @@ private:
     const egbos::shm::GovernanceFlags* gov_flags_;
     
     int tier0_fd_;
-    
+
+    std::size_t tier0_pending_bytes_;
+    uint64_t tier0_last_flush_ns_;
+
     FeedState current_state_;
     // expected_seq_ removed 2026-09-12: sequence-number gap detection is
     // DEFERRED (S2-REQ-002). The field was orphaned by the Option-A passthrough
     // patch and is no longer read or written anywhere. See ingestor.cpp.
     uint64_t  last_recv_time_ns_;
+
+    // Sticky Tier-0 durability fault flag.
+    // Set to true by tier0_flush_if_due() when fsync() fails.
+    // NEVER cleared: a hardware/OS storage fault is non-recoverable within a
+    // single run.  process_payload() must not reset current_state_ to
+    // FEED_NORMAL while this flag is set, so a Tier-0 failure cannot be
+    // silently overwritten by the next arriving frame.
+    bool tier0_fault_{false};
     
-    // Configurable thresholds (normally from spec/ADRs)
-    static constexpr uint64_t kStaleThresholdNs = 500'000'000; // 500ms
+    // Tier-0 durability thresholds per AD-003 / S2.
+    static constexpr std::size_t kTier0FlushBytes = 64 * 1024;
+    static constexpr uint64_t kTier0FlushIntervalNs = 5'000'000ULL;
+
+    // Feed staleness threshold per REG-FEED-STALE-001.
+    static constexpr uint64_t kStaleThresholdNs = 500'000'000ULL;
 };
 
 } // namespace egbos::l0

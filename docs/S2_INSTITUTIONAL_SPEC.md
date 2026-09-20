@@ -41,8 +41,8 @@ S2 is considered complete when `govcheck validate --scope C0,P3,P4,P5,P6 --stric
 S2 requires S1 completion (CLAIM-WAL-001 at V4). S2 is a strict dependency for S3.
 
 ## 3. Terminology
-* **Tier-0:** The raw, append-only durability log for normalized market events, written prior to SPSC forwarding.
-* **RawMarketEvent:** The canonical FlatBuffers schema governing all normalized market data within the execution plane (Fields Implementation Defined).
+* **Tier-0:** The raw, append-only durability log for normalized market events, written prior to SPSC forwarding. The physical Tier-0 record is a 128-byte `MarketEventSlot`.
+* **RawMarketEvent:** The canonical FlatBuffers schema governing all normalized market data within the execution plane. In the physical Tier-0 record, `RawMarketEvent` occupies bytes 0-63; frame sequencing metadata occupies bytes 64-127.
 * **Replay:** The mechanism of reconstructing execution state deterministically from Tier-0 logs.
 * **LOB:** Limit Order Book. The centralized data structure tracking resting liquidity.
 * **GapEvent:** A synthetic event emitted when `recv_seq != expected_seq` (Implementation Defined).
@@ -230,6 +230,12 @@ S2 requires S1 completion (CLAIM-WAL-001 at V4). S2 is a strict dependency for S
 
 ## 8. Data Contracts
 ### 8.1 RawMarketEvent
+
+**Tier-0 physical record layout:** `MarketEventSlot` is exactly 128 bytes.
+- Bytes 0-63: canonical `RawMarketEvent`.
+- Bytes 64-127: `SlotFrameMetadata` containing `first_update_id`, `final_update_id`, and `frame_level_index`.
+- This 128-byte physical record is the append/replay unit used by the current L0 implementation.
+
 *   **Ownership:** Defined in `engine/schemas/market_event.fbs`.
 *   **Lifetime:** Ephemeral in memory, durable in Tier-0.
 *   **Alignment:** 8-byte aligned standard FlatBuffers.

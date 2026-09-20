@@ -88,7 +88,6 @@ get_latest_run.py
 get_log.py
 get_main_commit.py
 search_shas.sh
-*.py\n*.csv\n*.bin\nscratch_*
 build_*/
 *.bak
 *.bak_*

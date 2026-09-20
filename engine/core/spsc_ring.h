@@ -172,7 +172,7 @@ private:
 #endif
 
     // Slots (must be separate from consumer index to prevent false sharing)
-    alignas(kCacheLineSize) T slots_[Capacity]{};
+    alignas(kCacheLineSize > alignof(T) ? kCacheLineSize : alignof(T)) T slots_[Capacity]{};
 };
 
 } // namespace egbos::core

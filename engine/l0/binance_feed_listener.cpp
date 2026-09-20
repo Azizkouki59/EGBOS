@@ -27,6 +27,7 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <poll.h>
 #include <fcntl.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -401,17 +402,33 @@ bool BinanceFeedListener::perform_websocket_handshake() noexcept {
 bool BinanceFeedListener::send_subscribe_message() noexcept {
 #if defined(__linux__)
     // If stream_path was embedded in the URL, no SUBSCRIBE needed.
-    // If using /ws base path, send a JSON subscribe frame.
-    if (!config_.stream_path) return true;
+    if (config_.stream_path) return true;
 
-    // For /ws/<streams> URL pattern, subscription is implicit in the URL.
-    return true;
+    // If using /ws base path, send a real RFC6455 JSON subscribe frame.
+    const char* payload = "{\"method\": \"SUBSCRIBE\", \"params\": [\"btcusdt@depth@100ms\"], \"id\": 1}";
+    std::size_t payload_len = __builtin_strlen(payload);
+    
+    uint8_t frame[128];
+    frame[0] = 0x81; // FIN + Text
+    frame[1] = 0x80 | static_cast<uint8_t>(payload_len); // Masked + Length (assume < 126)
+    
+    // Masking key (dummy 0s for simplicity since we don't care about secrecy here, 
+    // but RFC 6455 says it should be random. 0x01020304 is fine)
+    frame[2] = 0x01;
+    frame[3] = 0x02;
+    frame[4] = 0x03;
+    frame[5] = 0x04;
+    
+    for (std::size_t i = 0; i < payload_len; ++i) {
+        frame[6 + i] = payload[i] ^ frame[2 + (i % 4)];
+    }
+    
+    int total_len = 6 + payload_len;
+    return SSL_write(ssl_, frame, total_len) == total_len;
 #else
     return true;
 #endif
 }
-
-// ──────────────────────────────────────────────────────────────────────
 // recv_frame — receive one WebSocket text frame (RFC 6455)
 // Returns: payload bytes written into frame_buf_, 0=close, <0=error
 //
@@ -424,6 +441,33 @@ bool BinanceFeedListener::send_subscribe_message() noexcept {
 // A3 sentinel — distinct from -1 (terminal error) and 0 (graceful close).
 // Internal to recv_frame() / run_loop(); not part of the public API.
 static constexpr int kRecvTimeout = -2;
+
+// AD-003 idle service:
+// Wake before attempting the first byte of a new WebSocket frame so the
+// FeedIngestor can service its 5ms Tier-0 flush timer while the feed is idle.
+// We deliberately do not impose this timeout on an already-started frame;
+// fragmented/mid-frame reads retain the existing SO_RCVTIMEO behavior.
+static int wait_for_frame_start(int fd, int timeout_ms) noexcept {
+    if (fd < 0) return -1;
+
+    struct pollfd pfd{};
+    pfd.fd = fd;
+    pfd.events = POLLIN;
+
+    int rc;
+    do {
+        rc = ::poll(&pfd, 1, timeout_ms);
+    } while (rc < 0 && errno == EINTR);
+
+    if (rc == 0) return 0;
+    if (rc < 0) return -1;
+
+    if (pfd.revents & POLLNVAL) return -1;
+
+    // POLLERR/POLLHUP are intentionally allowed through to SSL_read(),
+    // which remains the authority for TLS/socket error classification.
+    return 1;
+}
 
 int BinanceFeedListener::recv_frame() noexcept {
 #if defined(__linux__)
@@ -442,6 +486,20 @@ int BinanceFeedListener::recv_frame() noexcept {
                     pending_rx_len_ = 0;
                 }
                 continue;
+            }
+
+            // Before the first byte of a new frame, wait only 5ms.
+            // This lets run_loop() call check_staleness(), which also services
+            // the AD-003 Tier-0 5ms flush deadline during feed idleness.
+            if (accumulated == 0 && is_initial_byte &&
+                ::SSL_pending(ssl_) == 0) {
+                const int ready = wait_for_frame_start(fd_, 5);
+                if (ready == 0) {
+                    return kRecvTimeout;
+                }
+                if (ready < 0) {
+                    return -1;
+                }
             }
 
             const int rd = ::SSL_read(ssl_, out + accumulated,
@@ -588,13 +646,60 @@ void BinanceFeedListener::run_loop() noexcept {
 
             // ── Hot receive loop (zero allocation) ──
             bool terminal_error = false;
+            uint64_t last_frame_rx_ns = 0;
+
             while (running_.load(std::memory_order_relaxed)) {
+                const uint64_t recv_start_ns = monotonic_raw_ns();
                 int n = recv_frame();
+                const uint64_t recv_end_ns = monotonic_raw_ns();
+                const uint64_t recv_wait_ns =
+                    recv_end_ns >= recv_start_ns
+                        ? (recv_end_ns - recv_start_ns)
+                        : 0;
+
+
 
                 // D4: timestamp acquired immediately after frame data is available.
-                const uint64_t rx_timestamp_ns = monotonic_raw_ns();
+                const uint64_t rx_timestamp_ns = recv_end_ns;
 
                 if (n > 0) {
+                    // BUG-FIX (2026-09-20): evaluate staleness against the
+                    // PREVIOUS last_recv_time_ns_ BEFORE process_payload()
+                    // overwrites it.  A receive gap > 500 ms was invisible
+                    // when the frame arriving after the gap was the first
+                    // thing to update last_recv_time_ns_.
+                    //
+                    // Ordering contract (must be preserved):
+                    //   1. receive complete frame
+                    //   2. capture rx_timestamp_ns  (done above)
+                    //   3. check_staleness(rx_timestamp_ns)   ← HERE
+                    //   4. update frame-gap diagnostics
+                    //   5. update last_frame_rx_ns
+                    //   6. process_payload(…)   ← overwrites last_recv_time_ns_
+                    //   7. arrival callback
+                    ingestor_.check_staleness(rx_timestamp_ns);
+
+                    if (last_frame_rx_ns != 0 &&
+                        rx_timestamp_ns >= last_frame_rx_ns) {
+                        const uint64_t frame_gap_ns =
+                            rx_timestamp_ns - last_frame_rx_ns;
+
+                        if (frame_gap_ns >= 400'000'000ULL) {
+                            std::fprintf(
+                                stderr,
+                                "[FRAME-GAP-DIAG] gap_ms=%llu prev_rx_ns=%llu rx_ns=%llu size=%d\n",
+                                static_cast<unsigned long long>(
+                                    frame_gap_ns / 1'000'000ULL),
+                                static_cast<unsigned long long>(
+                                    last_frame_rx_ns),
+                                static_cast<unsigned long long>(
+                                    rx_timestamp_ns),
+                                n);
+                        }
+                    }
+
+                    last_frame_rx_ns = rx_timestamp_ns;
+
                     // Forward raw JSON payload to FeedIngestor.
                     // FeedIngestor::process_payload is network-protocol-agnostic.
                     ingestor_.process_payload(frame_buf_,
