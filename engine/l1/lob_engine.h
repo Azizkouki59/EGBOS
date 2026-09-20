@@ -18,6 +18,7 @@ namespace egbos::l1 {
 constexpr std::size_t kMaxPriceLevels = 65536; 
 constexpr std::size_t kMaxOrders = 131072;
 
+static_assert(kMaxPriceLevels / 2 <= 32768 && kMaxPriceLevels / 2 - 1 <= 32767, "Top5BidsAsks int16_t offsets require midpoint offsets within [-32768, 32767]");
 // Order Node for order-by-order tracking. No malloc, uses FixedPool.
 struct OrderNode {
     uint64_t order_id;
