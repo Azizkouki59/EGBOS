@@ -1,0 +1,33 @@
+schema_version: 1
+entry_id: REG-RISK-STALE-001
+description: Soft limit stale threshold
+value: 5000
+namespace: engine
+title: Auto-generated title
+text: Auto-generated text
+verification_class: V1
+class_rationale: Auto-generated
+enforcement_mechanism: None
+enforcement_scope: None
+enforcement_gaps: []
+assumptions: []
+composition_dependencies: []
+composed_verification_class: V1
+owner: founder
+review_authority: founder
+deployment_blocking: false
+status: active
+created_at: '2026-07-22T00:00:00Z'
+created_by: founder
+last_reviewed: '2026-07-22T00:00:00Z'
+review_expiry: '2027-07-22T00:00:00Z'
+backup_owner: null
+remediation_category: null
+remediation_notes: ''
+deployment_blocking_rationale: ''
+minimum_class_for_unblocked_deploy: V1
+rfc_references: []
+proof_artifacts: []
+review_history: []
+superseded_by: null
+amendments: []

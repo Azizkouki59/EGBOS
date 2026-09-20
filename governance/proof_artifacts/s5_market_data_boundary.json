@@ -1,0 +1,55 @@
+{
+  "artifact_id": "S5-MARKET-DATA-BINARY-BOUNDARY-001",
+  "requirement_id": "S5-REQ-005",
+  "classification": "ARCHITECTURAL_ENFORCEMENT",
+  "scope": "S5 market-data binaries contain no linked Binance trading/order-entry implementation",
+  "verification_method": [
+    "nm -C binary symbol inspection",
+    "strings binary endpoint inspection",
+    "separate engine_l0_market_data and engine_l0_trading archives"
+  ],
+  "git_commit": "8d3cffd4813b98fe2a037fe694ed9b2b72661fca",
+  "generated_utc": "2026-09-18T22:27:49.014920+00:00",
+  "binaries": [
+    {
+      "binary": "build_native/engine/tests/s5_live_binance_qualification",
+      "sha256": "737d41b036708a350f7a69f72713ab189af976128b8f5f1c36ce16e410bf8ef5",
+      "order_entry_symbols_present": false,
+      "trading_rest_endpoint_strings_present": false,
+      "result": "PASS"
+    },
+    {
+      "binary": "build_native/engine/tests/live_pipeline_diagnostic",
+      "sha256": "def0134afa87a0f075ec0138a3b4615659adce07454464e42ad05dc4123dd043",
+      "order_entry_symbols_present": false,
+      "trading_rest_endpoint_strings_present": false,
+      "result": "PASS"
+    },
+    {
+      "binary": "build_native/engine/tests/e2e_live_diagnostic",
+      "sha256": "f574deba08b737765eade40713a6b8e1c27065796ac51fdf4f48d198ebefab82",
+      "order_entry_symbols_present": false,
+      "trading_rest_endpoint_strings_present": false,
+      "result": "PASS"
+    },
+    {
+      "binary": "build_native/engine/tests/test_live_feed_listener",
+      "sha256": "336a87bb694c354cb94d3c25bb23cb547bed8221f8b97c6395c0d10d1efc2627",
+      "order_entry_symbols_present": false,
+      "trading_rest_endpoint_strings_present": false,
+      "result": "PASS"
+    }
+  ],
+  "overall_result": "PASS",
+  "limitations": [
+    "Does not prove that arbitrary non-order network egress is impossible.",
+    "Does not prove production VLAN/topology isolation.",
+    "Does not replace live read-only credential verification."
+  ],
+  "v4_satisfied": null,
+  "source_state": {
+    "git_commit": "8d3cffd4813b98fe2a037fe694ed9b2b72661fca",
+    "working_tree_dirty": true,
+    "working_tree_diff_sha256": "2a98b0ba96c809f3f7ed95afbc420c90db585e42cb7c3dacfc30f2c0f4048775"
+  }
+}

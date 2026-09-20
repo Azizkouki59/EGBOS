@@ -1,0 +1,73 @@
+# governance/exit-gates/SLICE-S0-exit-v1.yaml
+# S0 Exit Gate — Bootstrap & Toolchain
+#
+# Spec reference: S0 Implementation Specification
+# This gate document certifies that all S0 acceptance criteria
+# have been satisfied.
+#
+# STATUS: SIGNED
+# The gate is signed because all S0 criteria from the original checklist have passed.
+
+schema_version: 1
+gate_id: "SLICE-S0-exit-v1"
+slice: "S0"
+title: "S0 Exit Gate — Bootstrap & Toolchain"
+status: "SIGNED"
+version: 1
+
+acceptance_criteria:
+  - id: "S0-AC-001"
+    description: "Repository directory structure matches spec §2 tree exactly"
+    spec_reference: "S0 §2"
+    status: "PASS"
+
+  - id: "S0-AC-002"
+    description: "Toolchain configuration files committed and verified"
+    spec_reference: "S0 §1"
+    status: "PASS"
+
+  - id: "S0-AC-003"
+    description: "govcheck and unit test suite compile and run cleanly"
+    spec_reference: "S0 §4"
+    status: "PASS"
+
+  - id: "S0-AC-004"
+    description: "Sanitizer profiles configured"
+    spec_reference: "S0 §4"
+    status: "PASS"
+
+  - id: "S0-AC-005"
+    description: "All 6 violation fixtures trigger expected error codes"
+    spec_reference: "S0 §4"
+    status: "PASS"
+
+  - id: "S0-AC-006"
+    description: "Governance assets and claims committed and active"
+    spec_reference: "S0 §5"
+    status: "PASS"
+
+  - id: "S0-AC-007"
+    description: "CI/CD infrastructure active and green"
+    spec_reference: "S0 §6"
+    status: "PASS"
+
+  - id: "S0-AC-008"
+    description: "ADR Deliverables committed (common.fbs, shm_layout.h)"
+    spec_reference: "S0 §7"
+    status: "PASS"
+
+  - id: "S0-AC-009"
+    description: "govcheck validate --scope C0 --strict --repo-root . returns summary.passed: true"
+    spec_reference: "S0 §8"
+    status: "PASS"
+
+  - id: "S0-AC-010"
+    description: "Composite --scope parsing exception committed and accepted"
+    spec_reference: "S0-FREEZE-EXCEPTION-001.yaml"
+    status: "PASS"
+
+signature:
+  signer: "founder"
+  date: "2026-07-18T01:17:15Z"
+  git_commit_sha: "dc30296ab576f88f0ec2b396f11ced7c4304cf81"
+  govcheck_output_sha256: "9b3fe5704ad3b427ffed0c926248e38c1e2eeee2529473457528fdff7cf2f530"

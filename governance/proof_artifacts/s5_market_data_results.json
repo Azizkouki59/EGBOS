@@ -6,36 +6,22 @@
   "zero_order_path_enforced": true,
   "measurements": {
     "execution_duration_s": 60,
-    "datagrams_sent": 177464,
-    "gaps_injected": 2772,
-    "gaps_detected": 2772,
+    "datagrams_sent": 185049,
+    "gaps_injected": 2891,
+    "gaps_detected": 2891,
     "gap_detection_accuracy_pct": 100.0000,
     "stale_feed_detected": true,
     "stale_threshold_ns": 500000000,
     "stale_pause_injected_ms": 650,
-    "ring_hwm_slots": 8,
+    "ring_hwm_slots": 149,
     "ring_capacity_slots": 65536,
-    "ring_hwm_pct": 0.0122,
+    "ring_hwm_pct": 0.2274,
     "ring_hwm_ceiling_pct": 90,
     "max_jitter_injected_us": 500
   },
   "pass_criteria": {
     "P1_gap_accuracy_100pct": { "result": true, "value": 100.0000 },
     "P2_stale_detected":      { "result": true },
-    "P3_ring_hwm_lt_90pct":   { "result": true, "value": 0.0122 }
-  },
-  "claim_upgrades": {
-    "CLAIM-L3-05": {
-      "previous_class": "V3",
-      "new_class": "V4",
-      "evidence": "ring_hwm_pct=0.0122 (<90%)",
-      "pass": true
-    },
-    "CLAIM-L0-002": {
-      "previous_class": "V3",
-      "new_class": "V4",
-      "evidence": "gap_accuracy=100.0000%, stale=true",
-      "pass": true
-    }
+    "P3_ring_hwm_lt_90pct":   { "result": true, "value": 0.2274 }
   }
 }
