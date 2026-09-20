@@ -52,15 +52,20 @@ TEST(LobDeterminismTest, GoldenFixtureExists) {
     // the proof artifact directory is missing — governance issue, not code.
     auto path = golden_path();
     if (!std::filesystem::exists(path)) {
-        auto snap = run_canonical_sequence();
-        std::filesystem::create_directories(path.parent_path());
-        std::ofstream out(path, std::ios::binary | std::ios::trunc);
-        ASSERT_TRUE(out.is_open()) << "Cannot write golden fixture: " << path;
-        out.write(reinterpret_cast<const char*>(&snap), sizeof(snap));
-        ASSERT_TRUE(out.good()) << "Write failed: " << path;
-        out.close();
-        GTEST_SKIP() << "Golden fixture written for the first time. "
-                        "Re-run to validate determinism.";
+        if (std::getenv("EGBOS_REGENERATE_GOLDEN") != nullptr) {
+            auto snap = run_canonical_sequence();
+            std::filesystem::create_directories(path.parent_path());
+            std::ofstream out(path, std::ios::binary | std::ios::trunc);
+            ASSERT_TRUE(out.is_open()) << "Cannot write golden fixture: " << path;
+            out.write(reinterpret_cast<const char*>(&snap), sizeof(snap));
+            ASSERT_TRUE(out.good()) << "Write failed: " << path;
+            out.close();
+            GTEST_SKIP() << "Golden fixture written for the first time. "
+                            "Re-run to validate determinism.";
+        } else {
+            FAIL() << "Golden fixture is missing. A governance decision is required. "
+                   << "Set EGBOS_REGENERATE_GOLDEN=1 to regenerate if authorized.";
+        }
     }
 
     // Read back the committed golden fixture.
@@ -154,4 +159,25 @@ TEST(LobDeterminismTest, CollisionHandling) {
     engine.cancel_order(id2);
     snap = engine.generate_top5_snapshot();
     EXPECT_EQ(snap.bid_qtys[0], 0); // all gone
+}
+
+TEST(LobDeterminismTest, CanonicalSequenceSemanticAssertions) {
+    auto snap = run_canonical_sequence();
+    EXPECT_EQ(snap.anchor_price_low32, 100000);
+
+    EXPECT_EQ(snap.bid_qtys[0], 10);
+    EXPECT_EQ(snap.bid_qtys[1], 0);
+    EXPECT_EQ(snap.bid_qtys[2], 0);
+    EXPECT_EQ(snap.bid_qtys[3], 0);
+    EXPECT_EQ(snap.bid_qtys[4], 0);
+
+    EXPECT_EQ(snap.ask_qtys[0], 10);
+    EXPECT_EQ(snap.ask_qtys[1], 25);
+    EXPECT_EQ(snap.ask_qtys[2], 0);
+    EXPECT_EQ(snap.ask_qtys[3], 0);
+    EXPECT_EQ(snap.ask_qtys[4], 0);
+
+    EXPECT_EQ(snap.bid_price_offsets[0], 1);
+    EXPECT_EQ(snap.ask_price_offsets[0], -2);
+    EXPECT_EQ(snap.ask_price_offsets[1], -1);
 }
