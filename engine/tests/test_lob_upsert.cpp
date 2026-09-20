@@ -194,3 +194,26 @@ TEST(LobUpsertTest, Finding21_ModifyOrderDirectly_ZeroQty_UpdatesBbo) {
     EXPECT_NE(snap.ask_qtys[1], 50)
         << "Zero-qty level from modified order must not appear in snapshot.";
 }
+TEST(LobPriceIndexTest, ExtremePricesClampToEdges) {
+    auto e = std::make_unique<egbos::l1::LobEngine>(100000, 100);
+    e->add_order(1, INT64_MAX, 5, true);              // far-high bid
+    e->add_order(2, INT64_MIN, 5, false);             // far-low ask
+    auto s = e->generate_top5_snapshot();
+    EXPECT_EQ(s.bid_price_offsets[0], 32767);         // top edge, not wrapped
+    EXPECT_EQ(s.ask_price_offsets[0], -32768);        // bottom edge
+}
+
+TEST(LobPriceIndexTest, LargeNonOverflowingDiffClampsNotWraps) {
+    auto e = std::make_unique<egbos::l1::LobEngine>(100000, 100);
+    // diff fits in int64 (no subtraction overflow) but ticks >> 2^32
+    e->add_order(1, (INT64_MAX / 100) * 100, 5, true);
+    auto s = e->generate_top5_snapshot();
+    EXPECT_EQ(s.bid_price_offsets[0], 32767);
+}
+
+TEST(LobPriceIndexTest, NegativeAnchorNearMin) {
+    auto e = std::make_unique<egbos::l1::LobEngine>(INT64_MIN + 1000, 100);
+    e->add_order(1, INT64_MAX, 5, true);
+    auto s = e->generate_top5_snapshot();
+    EXPECT_EQ(s.bid_price_offsets[0], 32767);
+}
