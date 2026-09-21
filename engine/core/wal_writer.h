@@ -608,6 +608,11 @@ public:
         // that the minimum payload size required for CRC coverage is 4 bytes.
         // Records with payload_length in [0, 3] are protected by header CRC
         // only — this is intentional per spec §4.3.
+        // Bound: payload_length <= kMaxPayloadSize (checked above), so
+        // crc_cover_len + 4 <= 256. Caller must back the record with at least
+        // kWalHeaderWireSize + payload_length bytes. payload[0] is a flexible
+        // array, so -Wstringop-overflow (size 0) is a false positive when
+        // payload_length is a runtime value. All current callers use 0.
         if (record->payload_length >= 4) {
             const uint32_t crc_cover_len = record->payload_length - 4;
             const uint32_t payload_crc = detail::compute_crc32c(
