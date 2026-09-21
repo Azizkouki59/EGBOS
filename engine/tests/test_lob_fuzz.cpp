@@ -4,13 +4,22 @@
 #include <memory>
 #include "engine/l1/lob_engine.h"
 
+static std::unique_ptr<egbos::l1::LobEngine> g_engine = nullptr;
+
+extern "C" int LLVMFuzzerInitialize(int *argc, char ***argv) {
+    g_engine = std::make_unique<egbos::l1::LobEngine>(100000000, 100);
+    return 0;
+}
+
 // S2-REQ-007: Libfuzzer Harness for LOB
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
     // Need at least 21 bytes to construct order arguments safely
     if (Size < 24) return 0;
     
-    auto engine_ptr = std::make_unique<egbos::l1::LobEngine>(100000000, 100);
-    egbos::l1::LobEngine& engine = *engine_ptr;
+    if (!g_engine) {
+        g_engine = std::make_unique<egbos::l1::LobEngine>(100000000, 100);
+    }
+    egbos::l1::LobEngine& engine = *g_engine;
     
     uint64_t order_id;
     int64_t price;
