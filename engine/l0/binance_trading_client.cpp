@@ -239,6 +239,11 @@ bool BinanceTradingClient::place_order(const OrderRequest& req,
             static_cast<unsigned long long>(req.recv_window_ms));
     }
 
+    if (qlen < 0 || static_cast<std::size_t>(qlen) >= sizeof(query)) {
+        ::strncpy(result_out.error_msg, "QUERY_TOO_LONG", 255);
+        return false;
+    }
+
     // Sign
     char sig[65];
     if (!sign(query, static_cast<std::size_t>(qlen), sig, sizeof(sig))) {
@@ -248,7 +253,11 @@ bool BinanceTradingClient::place_order(const OrderRequest& req,
 
     // Append signature
     char body[1280];
-    ::snprintf(body, sizeof(body), "%s&signature=%s", query, sig);
+    int blen = ::snprintf(body, sizeof(body), "%s&signature=%s", query, sig);
+    if (blen < 0 || static_cast<std::size_t>(blen) >= sizeof(body)) {
+        ::strncpy(result_out.error_msg, "BODY_TOO_LONG", 255);
+        return false;
+    }
 
     // POST
     char path[256];
@@ -294,6 +303,10 @@ bool BinanceTradingClient::cancel_order(const char* symbol, int64_t order_id,
     int  qlen = ::snprintf(query, sizeof(query),
         "symbol=%s&orderId=%lld&timestamp=%lld",
         symbol, static_cast<long long>(order_id), static_cast<long long>(ts));
+    if (qlen < 0 || static_cast<std::size_t>(qlen) >= sizeof(query)) {
+        ::strncpy(result_out.error_msg, "QUERY_TOO_LONG", 255);
+        return false;
+    }
 
     char sig[65];
     if (!sign(query, static_cast<std::size_t>(qlen), sig, sizeof(sig))) {
@@ -302,8 +315,12 @@ bool BinanceTradingClient::cancel_order(const char* symbol, int64_t order_id,
     }
 
     char path[512];
-    ::snprintf(path, sizeof(path), "%s?%s&signature=%s",
-               rest_path_order_, query, sig);
+    int plen = ::snprintf(path, sizeof(path), "%s?%s&signature=%s",
+                          rest_path_order_, query, sig);
+    if (plen < 0 || static_cast<std::size_t>(plen) >= sizeof(path)) {
+        ::strncpy(result_out.error_msg, "PATH_TOO_LONG", 255);
+        return false;
+    }
 
     if (!https_request("DELETE", rest_host_, path, nullptr, resp_buf_, kRespBufSize)) {
         ::strncpy(result_out.error_msg, "HTTP_REQUEST_FAILED", 255);
@@ -326,12 +343,14 @@ bool BinanceTradingClient::get_account(char* buf, std::size_t buf_len) noexcept 
     char query[128];
     int  qlen = ::snprintf(query, sizeof(query), "timestamp=%lld",
                            static_cast<long long>(ts));
+    if (qlen < 0 || static_cast<std::size_t>(qlen) >= sizeof(query)) return false;
 
     char sig[65];
     if (!sign(query, static_cast<std::size_t>(qlen), sig, sizeof(sig))) return false;
 
     char path[256];
-    ::snprintf(path, sizeof(path), "/api/v3/account?%s&signature=%s", query, sig);
+    int plen = ::snprintf(path, sizeof(path), "/api/v3/account?%s&signature=%s", query, sig);
+    if (plen < 0 || static_cast<std::size_t>(plen) >= sizeof(path)) return false;
 
     return https_request("GET", rest_host_, path, nullptr, buf, buf_len);
 }
