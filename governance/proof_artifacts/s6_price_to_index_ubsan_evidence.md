@@ -13,7 +13,7 @@ clang++ -std=c++20 -g -O1 -fsanitize=fuzzer,undefined,address -fno-sanitize-reco
 
 ## Results (real code)
 - Seed replay (price_int64min_anchor_underflow.bin): exit 0, no sanitizer report.
-- 600 s run: 1,772,999 executions in 601 s (~2,950 exec/s), cov 56 / ft 86 / corpus 23; log shared by two concurrent runs, so the provenance of this DONE line is unconfirmed. Re-run (run 3, own log /tmp/fuzz_run3.log): <N> executions in 601 s, no crash/oom/timeout artifact; ran concurrently with another fuzzer on the same corpus, so exec/s is not a clean throughput figure.
+- 600 s run: 1,772,999 executions in 601 s (~2,950 exec/s), cov 56 / ft 86 / corpus 23; log shared by two concurrent runs, so the provenance of this DONE line is unconfirmed. Re-run: pending (run 3 in progress when this line was corrected).
 - Earlier harness (engine rebuilt per input): ~78 exec/s; 120 s run, 9,463 executions, no report.
 - Full ctest on tree: 220 of 220 pass, 2 credential-gated skips.
 
