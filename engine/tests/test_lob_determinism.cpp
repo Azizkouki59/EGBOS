@@ -84,7 +84,7 @@ TEST(LobDeterminismTest, GoldenFixtureExists) {
 TEST(LobDeterminismTest, ThreeXByteIdenticalReplayAgainstGolden) {
     auto path = golden_path();
     if (!std::filesystem::exists(path)) {
-        GTEST_SKIP() << "Golden fixture not present — run GoldenFixtureExists first.";
+        FAIL() << "Golden fixture missing; governance decision required.";
     }
 
     // Read committed golden.
