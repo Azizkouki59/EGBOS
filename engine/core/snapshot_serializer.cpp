@@ -5,7 +5,7 @@
 #include "risk_enforcer.h"
 #include "../l1/lob_engine.h"
 
-#include <openssl/sha.h>
+#include <openssl/evp.h>
 #include <cstring>
 #include <algorithm>
 
@@ -74,14 +74,14 @@ std::vector<uint8_t> SnapshotSerializer::serialize(
     blob.resize(offset);
 
     // 6. Hash computation
-    SHA256_CTX sha256;
-    SHA256_Init(&sha256);
-    SHA256_Update(&sha256, blob.data(), blob.size());
+    uint8_t hash[32];
+    unsigned int hash_len = 0;
+    if (EVP_Digest(blob.data(), blob.size(), hash, &hash_len, EVP_sha256(), nullptr) != 1
+        || hash_len != 32) {
+        return {};
+    }
 
-    uint8_t hash[SHA256_DIGEST_LENGTH];
-    SHA256_Final(hash, &sha256);
-
-    std::memcpy(blob.data() + offsetof(SnapshotHeader, hash), hash, SHA256_DIGEST_LENGTH);
+    std::memcpy(blob.data() + offsetof(SnapshotHeader, hash), hash, 32);
 
     return blob;
 }

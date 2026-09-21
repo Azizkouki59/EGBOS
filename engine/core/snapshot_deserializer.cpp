@@ -5,7 +5,7 @@
 #include "risk_enforcer.h"
 #include "../l1/lob_engine.h"
 
-#include <openssl/sha.h>
+#include <openssl/evp.h>
 #include <cstring>
 #include <iostream>
 
@@ -27,12 +27,12 @@ bool SnapshotDeserializer::deserialize(
     std::memcpy(expected_hash, header->hash, 32);
     std::memset(header->hash, 0, 32);
 
-    SHA256_CTX sha256;
-    SHA256_Init(&sha256);
-    SHA256_Update(&sha256, mutable_data.data(), mutable_data.size());
-
-    uint8_t computed_hash[SHA256_DIGEST_LENGTH];
-    SHA256_Final(computed_hash, &sha256);
+    uint8_t computed_hash[32];
+    unsigned int computed_len = 0;
+    if (EVP_Digest(mutable_data.data(), mutable_data.size(), computed_hash, &computed_len,
+                   EVP_sha256(), nullptr) != 1 || computed_len != 32) {
+        return false;
+    }
 
     if (std::memcmp(expected_hash, computed_hash, 32) != 0) return false;
 
