@@ -21,22 +21,26 @@ jobs:
 
       - name: Build fuzz target
         run: |
-          mkdir -p build_fuzz
-          clang++ -std=c++20 -O1 -fsanitize=fuzzer,address,undefined \
-            -I. \
-            engine/tests/test_lob_fuzz.cpp \
-            engine/l1/lob_engine.cpp \
-            -o build_fuzz/lob_fuzzer
+          cmake -S . -B build_fuzz -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++
+          cmake --build build_fuzz --target test_lob_fuzz_run -j2
+          cp build_fuzz/engine/tests/test_lob_fuzz_run build_fuzz/lob_fuzzer
 
       - name: Run fuzz for 60 seconds (P6 gate)
         run: |
+          set -o pipefail
           mkdir -p governance/proof_artifacts
+          set +e
           build_fuzz/lob_fuzzer \
             -max_total_time=60 \
             -max_len=256 \
             -print_final_stats=1 \
             2>&1 | tee governance/proof_artifacts/lob_fuzzer_report.log
-          echo "Exit code: $?" >> governance/proof_artifacts/lob_fuzzer_report.log
+          FUZZ_EXIT=${PIPESTATUS[0]}
+          echo "Exit code: ${FUZZ_EXIT}" >> governance/proof_artifacts/lob_fuzzer_report.log
+          exit "${FUZZ_EXIT}"
 
       - name: Verify zero crashes
         run: |

@@ -1,0 +1,40 @@
+schema_version: 1
+document_id: "SLICE-S7-exit"
+title: "EGBOS Phase IV Entry: Capital Deployment Infrastructure (S7)"
+authority: "EGBOS Governance Board"
+status: "OPEN"
+
+# Phase 7 / S7 Exit Gate Criteria
+# S7 officially moves the system to production-grade physical infrastructure capable of handling live capital.
+# It requires the physical acquisition and benchmarking of Tier-0 production hardware.
+
+acceptance_criteria:
+  - id: "S7-AC-001"
+    description: "PROC-001: Co-location Facility (Tier-3/4, <2ms latency) SLA on file"
+    spec_reference: "EGBOS_MASTER.md §J3.1"
+    status: "PENDING"
+
+  - id: "S7-AC-002"
+    description: "PROC-002: Execution Server CPU (AMD EPYC/Xeon 32+ cores) and config/cpu-affinity.yaml committed"
+    spec_reference: "EGBOS_MASTER.md §J3.1"
+    status: "PENDING"
+
+  - id: "S7-AC-003"
+    description: "PROC-003: NVMe Storage benchmark (P99 fsync < 100µs) documented"
+    spec_reference: "EGBOS_MASTER.md §J3.1"
+    status: "PENDING"
+
+  - id: "S7-AC-004"
+    description: "PROC-004: Network Interface (10 GbE, kernel bypass) verified < 5µs loopback"
+    spec_reference: "EGBOS_MASTER.md §J3.1"
+    status: "PENDING"
+
+  - id: "S7-AC-005"
+    description: "timing_constants.json committed with production hardware measurements"
+    spec_reference: "EGBOS_MASTER.md §I2 S7"
+    status: "PENDING"
+
+signature:
+  signer: "PENDING"
+  date: "PENDING"
+  git_commit_sha: "PENDING"

@@ -8,7 +8,7 @@ text:                          |
   L1 resists fuzzed poison packets without crashing for at least 60s.
 verification_class:            "V4"
 previous_class:                "V3"
-class_rationale:               "V4: Unit-tested — 3x byte-identical LOB replay against committed golden fixture (governance/proof_artifacts/golden_lob.bin SHA-256 c97b85f63d8dc5ec14d4e2c308e3596059d2304e4f535d88a4214c4c5ca4d007). GC-E-010 enforced (zero-alloc). GC-E-RESEARCH-001 active. P6 fuzz gate CI workflow committed."
+class_rationale:               "V4: Unit-tested — 3x byte-identical LOB replay against committed golden fixture (governance/proof_artifacts/golden_lob.bin SHA-256 c64ebd32be50fd29385f15f0fdb28115fd2388bedd6cd2288cf1fe25e4c17440). GC-E-010 enforced (zero-alloc). GC-E-RESEARCH-001 active. P6 fuzz gate CI workflow committed."
 enforcement_mechanism:         "Clang AST analysis (GC-E-010, AD-004) and libfuzzer CI gate"
 enforcement_scope:             "engine/l1/lob_engine.cpp and engine/l1/lob_engine.h"
 enforcement_gaps:              ["Fuzzing corpus may not cover 100% of hypothetical malformed UDP cases"]
@@ -27,7 +27,7 @@ rfc_references:                []
 proof_artifacts:
   - path: "governance/proof_artifacts/golden_lob.bin"
     type: "golden_fixture"
-    sha256: "c97b85f63d8dc5ec14d4e2c308e3596059d2304e4f535d88a4214c4c5ca4d007"
+    sha256: "c64ebd32be50fd29385f15f0fdb28115fd2388bedd6cd2288cf1fe25e4c17440"
   - path: "governance/proof_artifacts/lob_fuzzer_report.log"
     type: "fuzzer_log"
     sha256: "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"

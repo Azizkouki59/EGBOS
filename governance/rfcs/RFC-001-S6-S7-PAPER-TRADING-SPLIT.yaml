@@ -1,0 +1,32 @@
+rfc_id:          "RFC-001"
+title:           "Decoupling Paper Trading Authorization from Production Hardware Procurement"
+status:          "accepted"
+author:          "founder"
+date_opened:     "2026-09-23T14:40:00Z"
+date_closed:     "2026-09-23T14:45:00Z"
+change_type:     "slice_criteria | principle_amendment"
+artifacts_changed:
+  - artifact_id: "S6"
+    change_description: "Redefined as Execution Engine Engineering Qualification. Hardware requirements deferred."
+  - artifact_id: "S7"
+    change_description: "Redefined as Capital Deployment Infrastructure & Production Qualification. Absorbs PROC-001..004."
+  - artifact_id: "MS-005"
+    change_description: "Paper Trading authorization unlocked at S6-exit, decoupling it from S7."
+  - artifact_id: "EGBOS_MASTER.md"
+    change_description: "Updated slice definitions, MS-005 preconditions, and procurement table."
+  - artifact_id: "AD-031"
+    change_description: "Created to formally record the architectural decision for this split."
+rationale:       "Paper trading is a zero-capital software validation activity. Blocking it behind physical hardware procurement (PROC-001..004) harms engineering velocity without providing safety benefits. Engineering execution qualification must be separate from production hardware qualification."
+alternatives_considered:
+  - alternative: "Create S6.5"
+    rejection_reason: "Renumbering slices breaks historical references and dependency mappings across the repository."
+  - alternative: "Waive PROC requirements"
+    rejection_reason: "PROC requirements are slice entry gates, not deployment-blocking claims; waivers do not apply constitutionally."
+impact_assessment:
+  claims_invalidated: []
+  claims_requiring_re_proof: []
+  slices_reopened: ["S6", "S7"]
+  capital_gates_affected: []
+approval_authority: "CTO + Governance Board"
+approval_record:    "Approved by CTO. govcheck verification passing."
+supersedes:         null

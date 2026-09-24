@@ -1,42 +1,42 @@
 schema_version: 1
 document_id: "SLICE-S6-exit"
-title: "EGBOS Phase III Entry: Production Hardware Qualification (S6)"
+title: "EGBOS Phase III Entry: Execution Engine Engineering Qualification (S6)"
 authority: "EGBOS Governance Board"
 status: "OPEN"
 
 # Phase 6 / S6 Exit Gate Criteria
-# S6 officially moves the system from development/testing into Phase III Staging.
-# It requires the physical acquisition and benchmarking of Tier-0 production hardware.
+# S6 officially moves the system from development/testing into Phase III Staging for Paper Trading.
+# It requires the completion of the software execution plane and paper execution verification.
 
 acceptance_criteria:
   - id: "S6-AC-001"
-    description: "PROC-001: Co-location Facility (Tier-3/4, <2ms latency) SLA on file"
-    spec_reference: "EGBOS_MASTER.md §J3.1"
+    description: "48h clean staging run on engineering hardware: zero P0 incidents, zero TSAN findings, zero INV-001 violations"
+    spec_reference: "EGBOS_MASTER.md §I2 S6"
     status: "PENDING"
 
   - id: "S6-AC-002"
-    description: "PROC-002: Execution Server CPU (AMD EPYC/Xeon 32+ cores) and config/cpu-affinity.yaml committed"
-    spec_reference: "EGBOS_MASTER.md §J3.1"
+    description: "All 10 Phase-0 startup checks passing on engineering hardware"
+    spec_reference: "EGBOS_MASTER.md §I2 S6"
     status: "PENDING"
 
   - id: "S6-AC-003"
-    description: "PROC-003: NVMe Storage benchmark (P99 fsync < 100µs) documented"
-    spec_reference: "EGBOS_MASTER.md §J3.1"
+    description: "Stratum-0 cold recovery drill completed and recorded"
+    spec_reference: "EGBOS_MASTER.md §I2 S6"
     status: "PENDING"
 
   - id: "S6-AC-004"
-    description: "PROC-004: Network Interface (10 GbE, kernel bypass) verified < 5µs loopback"
-    spec_reference: "EGBOS_MASTER.md §J3.1"
+    description: "REC-008, REC-009, REC-010 fire-drill records committed to governance/runbooks/firedrills/phase-iii/"
+    spec_reference: "EGBOS_MASTER.md §I2 S6"
     status: "PENDING"
 
   - id: "S6-AC-005"
-    description: "LIVE-CAPITAL-001.yaml staging capital sign-off complete"
-    spec_reference: "EGBOS_MASTER.md §S6"
+    description: "Paper execution path verified, confirming zero live orders and termination at simulated fills"
+    spec_reference: "EGBOS_MASTER.md §I2 S6"
     status: "PENDING"
 
   - id: "S6-AC-006"
-    description: "timing_constants.json committed with production hardware measurements"
-    spec_reference: "EGBOS_MASTER.md §S6"
+    description: "G2 production deploy gate: govcheck deploy-gate --target staging passing"
+    spec_reference: "EGBOS_MASTER.md §I2 S6"
     status: "PENDING"
 
 signature:

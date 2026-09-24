@@ -1,0 +1,13 @@
+# Manual Impact Assessment for RFC-001
+
+claims_invalidated: []
+claims_requiring_re_proof: []
+slices_reopened:
+  - "S6"
+  - "S7"
+capital_gates_affected: []
+
+notes: |
+  CLAIM-WAL-001.yaml references S6 as the deferred production target.
+  Under this RFC, production target is officially S7. No re-proof of the
+  WAL empirical properties is required for S6 Engineering Qualification.

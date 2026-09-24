@@ -90,7 +90,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_executable(test_lob_fuzz_run test_lob_fuzz.cpp ../l1/lob_engine.cpp ../l0/ingestor.cpp ../l0/binance_json_normalizer.cpp)
     target_link_libraries(test_lob_fuzz_run PRIVATE engine_core flatbuffers)
     target_compile_features(test_lob_fuzz_run PRIVATE cxx_std_20)
-    target_compile_options(test_lob_fuzz_run PRIVATE -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all)
+    target_compile_options(test_lob_fuzz_run PRIVATE -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all -UNDEBUG)
     target_link_options(test_lob_fuzz_run PRIVATE -fsanitize=fuzzer,address,undefined)
   endif()
 

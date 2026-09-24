@@ -584,7 +584,7 @@ Phase III: Production Qualification (ENGINE_V3 Phase 6)
 **Objective:** Deploy to production-equivalent bare metal. Measure all timing constants empirically. Qualify the operational runbook suite.
 
 **Entry Condition:** Phase II exit criteria met, G2 gate passing  
-**Exit Condition:** 48h clean staging run, all runbooks fire-drilled, timing_constants.json committed, LIVE-CAPITAL-001.yaml signed
+**Exit Condition:** 48h clean staging run, all runbooks fire-drilled, timing_constants.json committed
 
 #### Operating Constraints
 
@@ -1090,7 +1090,7 @@ GC-E-RESEARCH-003| Error| pickle in engine/ or production inference| G4
 GC-E-RESEARCH-004| Error| OOS vault modification without unseal record| P10  
 GC-E-050| Error| Registry entry REG-RISK-STALE-001 production value exceeds 5000ms| G2 (Production deploy gate)  
 GC-E-051| Error| Production observability stack not verified: egbos_exporter proof artifact absent, or inotify SLA proof artifact absent, or Grafana panel count < 12| G2 (Production deploy gate)  
-GC-E-052| Error| Phase III runbook fire-drill records absent from `governance/runbooks/firedrills/phase-iii/` — REC-008, REC-009, REC-010 fire-drill records required| TIMING-CONSTANTS-001.yaml sign-off (S6 exit)  
+GC-E-052| Error| Phase III runbook fire-drill records absent from `governance/runbooks/firedrills/phase-iii/` — REC-008, REC-009, REC-010 fire-drill records required| TIMING-CONSTANTS-001.yaml sign-off (S7 exit)  
 GC-E-053| Error| Claim with verification_class ≥ V3 has been amended (review_history entry present) without a corresponding `governance/rfcs/RFC-NNN.yaml` in accepted status listing this claim in artifacts_changed| C0 (all PRs, immediate)  
 GC-E-054| Error| Research environment compiler flags missing `-ffp-contract=off` in C++ targets, or research Docker image missing `NPY_DISABLE_SVML=1` environment variable, or research SIMD level exceeds `simd_level` in `timing_constants.json`| P2 (research build gate)  
 GC-E-055| Error| Running ONNX Runtime version does not match `onnx_runtime_version` field in model registry entry, or `governance/onnx_runtime_version.lock` is absent| Pre-flight PF-09 (blocks preflight_armed); G4  
@@ -4061,8 +4061,8 @@ S2 | LOB Engine (L1) | Phase 2 | I | Pending | P3 + P4 + P5 + P6 | None
 S3 | Position Engine (L3) + L4 Risk | Phase 3 | I | Pending | P3 + P4 + P5 + G1 | None  
 S4 | Execution Router (L5) + Startup | Phase 4 | I | Pending | P3 + P7 + G1 | Staging deploy  
 S5 | Live Feed Integration (L0) | Phase 5 | II | Pending | G2 | Read-only exchange connect  
-S6 | Production Hardware Qualification | Phase 6 | III | Pending | G2 + timing_constants | Staging capital  
-S7 | Capital Deployment Infrastructure | Phase 7 | IV | Pending | LIVE-CAPITAL-001 | Live capital  
+S6 | Execution Engine Engineering Qualification | Phase 6 | III | Pending | G2 | Paper trading  
+S7 | Capital Deployment Infrastructure | Phase 7 | IV | Pending | S6 exit + G2 | Infrastructure qualification; no capital authority  
 S8 | Research Infrastructure | Phase 8 | V | Pending | G3 | None  
 S9 | Dataset Governance | Phase 9 | V | Pending | G3 | None  
 S10 | Backtesting & WFV | Phase 10 | V | Pending | P9 + P10 | None  
@@ -4220,26 +4220,23 @@ S5 — Live Feed Integration (L0) — Market Data Qualification Capital Gate: Re
 
 **Note:** This slice maps to A2.2 Phase II (Market Data Qualification). Exit requires sign-off document `MARKET-DATA-001.yaml` (see I5).
 
-S6 — Production Hardware Qualification Capital Gate: Staging capital
+S6 — Execution Engine Engineering Qualification Capital Gate: Paper trading
 
-**Entry Condition:** S5 acceptance gate passed. CLAIM-L3-05 at V4. Production-equivalent bare metal provisioned. No cloud VMs.
+**Entry Condition:** S5 acceptance gate passed. CLAIM-L3-05 at V4. Engineering hardware provisioned.
 
 **Exit Condition (Acceptance Gate):**
 [code] 
     govcheck validate --scope C0,G2 --strict
 [/code]
 
-_Note: Requires manual timing_constants sign-off._
-
 **Pass Criteria:**
 
-  - `timing_constants.json` committed with empirical measurements from production hardware (WAL fsync P99, loop cycle P99, feed-to-decision P99 — all measured, none estimated)
-  - 48h clean staging run: zero P0 incidents, zero TSAN findings, zero INV-001 violations
-  - All 10 Phase-0 startup checks passing on production hardware
+  - 48h clean staging run on engineering hardware: zero P0 incidents, zero TSAN findings, zero INV-001 violations
+  - All 10 Phase-0 startup checks passing on engineering hardware
   - Stratum-0 cold recovery drill completed and recorded
   - REC-008 (ABORT preflight — PF-01 WAL CRC failure), REC-009 (Stratum-0 cold recovery), and REC-010 (TERMINAL_HALT with simultaneous connectivity loss) fire-drill records committed to `governance/runbooks/firedrills/phase-iii/` — verified by GC-E-052
-  - CLAIM-L3-05 measurements updated in `timing_constants.json` for production hardware profile
-  - G2 production deploy gate: `govcheck deploy-gate --target production` passing
+  - Paper execution path verified, confirming zero live orders and termination at simulated fills
+  - G2 production deploy gate: `govcheck deploy-gate --target staging` passing
 
 
 
@@ -4255,17 +4252,18 @@ _Note: Requires manual timing_constants sign-off._
 
 S7 — Capital Deployment Infrastructure Capital Gate: Live capital
 
-**Entry Condition:** S6 acceptance gate passed. `LIVE-CAPITAL-001.yaml` signed. `timing_constants.json` committed with production measurements.
+**Entry Condition:** S6 acceptance gate passed. Production-equivalent bare metal provisioned (PROC-001 through PROC-004 fulfilled). No cloud VMs.
 
 **Exit Condition (Acceptance Gate):**
 [code] 
     govcheck validate --scope C0,G2 --strict
 [/code]
 
+_Note: Requires manual timing_constants sign-off._
+
 **Pass Criteria:**
 
-  - `LIVE-CAPITAL-001.yaml`: founder-signed governance record, capital authority document
-  - IV-A gate passed: 5% target notional, zero P0 incidents
+  - `timing_constants.json` committed with empirical measurements from production hardware (WAL fsync P99, loop cycle P99, feed-to-decision P99 — all measured, none estimated)
   - CLAIM-L3-05 at V4 on production hardware
   - INV-001 monitor active and reporting to ObservabilityBridge (PROM-004 live)
   - Prometheus `egbos_exporter` live and scraping to production Grafana (H2/H3 panels operational)
@@ -4491,10 +4489,10 @@ Some slice exits require a human-signed governance document in addition to govch
 
 Document ID | Slice | Trigger | Signatories | Stored Path | govcheck Check  
 ---|---|---|---|---|---  
-LIVE-CAPITAL-001.yaml | S7 exit | Capital deployment authorization — live funds | Founder | `governance/signoffs/LIVE-CAPITAL-001.yaml` | govcheck validates schema + signature field  
+LIVE-CAPITAL-001.yaml | MS-006 / IV-A | Capital deployment authorization — live funds | Founder | `governance/signoffs/LIVE-CAPITAL-001.yaml` | govcheck validates schema + signature field  
 MARKET-DATA-001.yaml | S5 exit | Market data qualification — 14-day uptime + replay confirmed | Founder | `governance/signoffs/MARKET-DATA-001.yaml` | govcheck G2 gate checks presence  
 DEPLOY-STRATEGY-001.yaml | S13 exit | Strategy deployment — live model authorization | Founder | `governance/signoffs/DEPLOY-STRATEGY-001.yaml` | govcheck G4 gate checks presence + model SHA-256 match  
-TIMING-CONSTANTS-001.yaml | S6 exit | Production hardware timing constants committed | Founder | `governance/signoffs/TIMING-CONSTANTS-001.yaml` | govcheck validates hardware_id matches deployment target  
+TIMING-CONSTANTS-001.yaml | S7 exit | Production hardware timing constants committed | Founder | `governance/signoffs/TIMING-CONSTANTS-001.yaml` | govcheck validates hardware_id matches deployment target  
 STRESS-CERT-001.yaml | F exit | Stress test certification — all ST-01 through ST-08 scenarios passing in simulation; ST-06 and production-harness scenarios documented as Phase III deferred | Founder | `governance/signoffs/STRESS-CERT-001.yaml` | govcheck validates presence and schema at Phase F exit before Phase G instrumentation begins  
 INCIDENT-{ID}.yaml | Any P0 | P0 incident record — root cause, resolution, replay verification | Founder | `governance/incidents/INCIDENT-{ID}.yaml` | govcheck flags if P0 alert open without incident record for >24h  
   
@@ -4779,7 +4777,7 @@ MS-001 | Execution Foundation | S0 + S1 + S2 exit-gates signed | None — intern
 MS-002 | Data & Validation Ready | S3 exit-gate signed; all CLAIM-DATA-XXX verified | None — simulated data only | Market data provenance validation failure  
 MS-003 | Algorithm Engine Complete | S4 exit-gate signed; CLAIM-ALGO-XXX verified | None — simulation environment only | Claim re-verification failure after parameter change  
 MS-004 | Simulation Validated | S5 exit-gate signed; stress test registry all-pass | None — stress testing only | Any stress test regression  
-MS-005 | Execution Engine Deployed | S6 + S7 exit-gates signed; co-location hardware procured per J3 | Paper trading only (zero capital at risk) | Hardware SLA breach; govcheck clean-operation gap > 24h  
+MS-005 | Execution Engine Deployed | S6 exit-gate signed; paper execution path verified | Paper trading only (zero capital at risk) | govcheck clean-operation gap > 24h  
 MS-006 | Capital Gate IV-A | MS-005 + 30 consecutive days govcheck-clean live paper trading; CAPITAL_GATE_CLOCK_START WAL record committed | Live capital up to IV-A threshold (to be set via LIVE-CAPITAL-001.yaml) | Single drawdown breach; govcheck failure; 30-day clock resets  
 MS-007 | Capital Gate IV-B | MS-006 + 90 consecutive days govcheck-clean within IV-A limits; CAPITAL_GATE_CLOCK_START WAL record committed | Live capital up to IV-B threshold | Same as IV-A; 90-day clock resets to zero  
 MS-008 | Capital Gate IV-C | MS-007 + 180 consecutive days govcheck-clean within IV-B limits; CAPITAL_GATE_CLOCK_START WAL record committed | Live capital up to IV-C threshold | Same; 180-day clock resets  
@@ -4828,10 +4826,10 @@ J3.1 — Procurement Gate Items
 
 Item ID| Category| Specification| Required By| Acceptance Criterion  
 ---|---|---|---|---  
-PROC-001 | Co-location Facility | Tier-3 or Tier-4 facility; maximum 2ms one-way latency to primary exchange matching engine; redundant power (2N or N+1); physical security SOC-2 Type II certified | S6-entry | Signed co-location SLA on file in `governance/procurement/`; latency measurement report attached  
-PROC-002 | Execution Server — CPU | AMD EPYC 9004 series or Intel Xeon Sapphire Rapids; minimum 32 physical cores; CPU affinity pinning for ENGINE_V3 ring threads; NUMA topology documented | S6-entry | CPU affinity configuration file committed to `config/cpu-affinity.yaml`; govcheck PROC-CPU-001 rule passes  
-PROC-003 | Execution Server — NVMe Storage | PCIe Gen 4.0 NVMe; minimum 2TB usable; sequential write > 6 GB/s; fsync latency < 100µs at P99; dedicated controller, not shared with OS volume | S6-entry | fsync benchmark report (fio output) attached to S6 exit-gate artifact; P99 < 100µs verified  
-PROC-004 | Network Interface | 10 GbE minimum; kernel bypass (DPDK or RDMA) capable NIC; interrupt coalescing disabled for latency-sensitive rings; dedicated VLAN for exchange connectivity | S6-entry | NIC configuration file on record; kernel bypass mode verified via ping-pong latency test (< 5µs P99 loopback)  
+PROC-001 | Co-location Facility | Tier-3 or Tier-4 facility; maximum 2ms one-way latency to primary exchange matching engine; redundant power (2N or N+1); physical security SOC-2 Type II certified | S7-entry | Signed co-location SLA on file in `governance/procurement/`; latency measurement report attached  
+PROC-002 | Execution Server — CPU | AMD EPYC 9004 series or Intel Xeon Sapphire Rapids; minimum 32 physical cores; CPU affinity pinning for ENGINE_V3 ring threads; NUMA topology documented | S7-entry | CPU affinity configuration file committed to `config/cpu-affinity.yaml`; govcheck PROC-CPU-001 rule passes  
+PROC-003 | Execution Server — NVMe Storage | PCIe Gen 4.0 NVMe; minimum 2TB usable; sequential write > 6 GB/s; fsync latency < 100µs at P99; dedicated controller, not shared with OS volume | S7-entry | fsync benchmark report (fio output) attached to S7 exit-gate artifact; P99 < 100µs verified  
+PROC-004 | Network Interface | 10 GbE minimum; kernel bypass (DPDK or RDMA) capable NIC; interrupt coalescing disabled for latency-sensitive rings; dedicated VLAN for exchange connectivity | S7-entry | NIC configuration file on record; kernel bypass mode verified via ping-pong latency test (< 5µs P99 loopback)  
 PROC-005 | Exchange Connectivity | FIX/FAST or exchange-native binary protocol; dedicated leased line or sponsored access (not shared internet); primary + backup connectivity; failover < 500ms | S7-entry | Exchange connectivity test report (paper trading session with live market data); failover drill report signed by Chief Architecture Office  
 PROC-006 | Redis Production Instance | Redis 7.x; ACL per consumer group (per AD-010/H4.2); AOF persistence fsync every-second; co-located with execution server on same NUMA node; no shared Redis with research plane | S4-entry | Redis ACL configuration file in `config/redis/`; govcheck SINK-02 rule passes; separate research Redis instance confirmed  
 PROC-007 | Monitoring Infrastructure | Prometheus (egbos_exporter sidecar per H2.1); Grafana 10+ with panels PAN-001 through PAN-012; alerting webhook to on-call system; retention ≥ 90 days | S5-entry | govcheck PROM-001 rule passes; all 12 panels rendering in Grafana with live metrics; alert webhook verified by test fire  

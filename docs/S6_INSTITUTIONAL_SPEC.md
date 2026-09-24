@@ -1,11 +1,11 @@
-# S6 Institutional Specification: Production Hardware Qualification
+# S6 Institutional Specification: Execution Engine Engineering Qualification
 
 **Document ID:** S6-INST-SPEC-001  
 **Authority:** EGBOS Governance Board  
 **Governs:** Phase III Entry / S6  
-**Status:** ACTIVE — software tasks IN PROGRESS; hardware gates PENDING  
+**Status:** ACTIVE — software tasks IN PROGRESS  
 **Predecessor:** S5-INST-SPEC-001 (FROZEN, `docs/S5_INSTITUTIONAL_SPEC.md`)  
-**Successor:** S7 — Paper Trading  
+**Successor:** MS-005 (Paper Trading) and S7 (Production Hardware)  
 **Related exit gate:** `governance/exit-gates/SLICE-S6-exit-v1.yaml`  
 **HEAD at authoring:** `a2342c4`
 
@@ -17,10 +17,11 @@ Slice 6 (S6) is the Phase III entry gate. It has **two parallel workstreams**:
 
 | Workstream | Owner | Blocking |
 |---|---|---|
-| **SW** — Software defect remediation from S5 Live Qualification | Engineering | Yes — must commit before hardware sign-off |
-| **HW** — Physical production hardware procurement and benchmarking | Founder/Infra | Yes — must complete before S7 entry |
+| **SW** — Software defect remediation from S5 Live Qualification | Engineering | Yes — must commit for S6 exit |
 
-S7 (Paper Trading) cannot begin until **both** workstreams reach PASS. A clean `git status`, a green 213-test CTest suite, and all four PROC records signed are the minimum bar.
+*Note: The Hardware Workstream (PROC-001 through PROC-004) was formally decoupled from S6 via AD-031 and RFC-001. It is now a requirement for S7 (Capital Deployment Infrastructure).*
+
+MS-005 (Paper Trading) cannot begin until the SW workstream reaches PASS. A clean `git status` and a green 213-test CTest suite are the minimum bar.
 
 ---
 
@@ -174,7 +175,9 @@ scripts/e2e_live_diagnostic.testnet.bak.cpp
 
 ---
 
-## 3. Hardware Workstream (PROC Gates)
+## 3. Hardware Workstream (PROC Gates) - MOVED TO S7
+
+*Pursuant to AD-031 and RFC-001, PROC gates have been moved to S7 (Capital Deployment Infrastructure).*
 
 All four PROC gates PENDING. Require physical action by the Founder.
 
@@ -229,17 +232,17 @@ fio --name=fsync_lat --ioengine=sync --rw=write --bs=4k --numjobs=1 \
 
 ---
 
-## 4. Governance Sign-offs
+## 4. Governance Sign-offs for MS-006 (Capital Gate IV-A)
 
-### 4.1 LIVE-CAPITAL-001.yaml (S6-AC-005)
+### 4.1 LIVE-CAPITAL-001.yaml
 
-Must be signed and committed before S7 paper-trading infrastructure is provisioned.
+Must be signed and committed only after S7 exit and the MS-006 prerequisites are satisfied. It authorizes IV-A live capital and does not gate S7 entry.
 
 ```yaml
 # governance/sign-offs/LIVE-CAPITAL-001.yaml  (TEMPLATE)
 document_id: "LIVE-CAPITAL-001"
-slice: "S7"
-capital_class: "STAGING"
+slice: "MS-006 / IV-A"
+capital_class: "LIVE"
 max_notional_usd: FILL_IN
 risk_limit_usd_per_day: FILL_IN
 signer: FILL_IN
@@ -247,7 +250,7 @@ date: FILL_IN
 git_commit_sha: FILL_IN
 ```
 
-### 4.2 timing_constants.json (S6-AC-006)
+### 4.2 timing_constants.json
 
 ```json
 {
@@ -275,11 +278,7 @@ All ten gates must be simultaneously true:
 | 3 | S6-REQ-001 merged to `main` | `git log` |
 | 4 | S6-REQ-002 merged to `main` | `git log` |
 | 5 | S6-REQ-004 boundary-script fix merged | `git log` |
-| 6 | PROC-001 through PROC-004 countersigned | Physical inspection |
-| 7 | `config/cpu-affinity.yaml` committed with real assignments | `git show` |
-| 8 | `timing_constants.json` populated from production hardware | File contents |
-| 9 | `LIVE-CAPITAL-001.yaml` signed and committed | `git show` |
-| 10 | `SLICE-S6-exit-v1.yaml` `status: CLOSED` and signed | `git show` |
+| 6 | `SLICE-S6-exit-v1.yaml` `status: CLOSED` and signed | `git show` |
 
 ---
 
@@ -329,4 +328,4 @@ Commit 7: chore: expand .gitignore for build artifacts and scratch files
 
 ## 7. S7 Entry Scope (for reference only)
 
-S7 (Paper Trading) requires: ENGINE_V3 order-entry path wired to a paper adapter; `LIVE-CAPITAL-001.yaml` signed; production hardware `timing_constants.json`; G1 governance gate (satisfied at S3 exit). S7 is out of S6 scope.
+S7 (Capital Deployment Infrastructure) requires: S6 completed; production hardware PROC-001..004 fulfilled. Production timing measurements and `TIMING-CONSTANTS-001.yaml` are S7 outputs. LIVE-CAPITAL-001 is an MS-006 / IV-A authorization and is out of S6/S7 entry scope.
