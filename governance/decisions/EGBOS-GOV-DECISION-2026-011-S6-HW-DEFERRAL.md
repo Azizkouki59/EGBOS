@@ -148,9 +148,10 @@ Deferral for each PROC gate is lifted when:
 ```yaml
 signer: aziz
 date: 2026-09-24T12:37:07+01:00
-git_commit_sha: a1158cd061be7c170233f4c778823b325f954842
+git_commit_sha: b654a93808372ab960b37dcdd1db9020adfb639b
 ```
 
 This document has governance force as of the commit identified above.
-Amended in the same commit via `git commit --amend --no-edit` to populate this
-signature block; the amend SHA supersedes the initial a1158cd SHA for record purposes.
+Provenance: `git cat-file -t b654a93808372ab960b37dcdd1db9020adfb639b` returns `commit`.
+The signing commit is the commit that introduced this document to the repository,
+consistent with the convention used in SLICE-S0 through SLICE-S4 exit gates.

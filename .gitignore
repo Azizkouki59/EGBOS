@@ -102,3 +102,19 @@ engine/tests/*_asan
 engine/tests/*_asan_o3
 engine/tests/*_tsan
 engine/tests/*_tsan_o3
+
+# S6 batch — scratch and diagnostic files (S6_INSTITUTIONAL_SPEC.md §2.6)
+# Per §2.6 "Untracked files — gitignore" and "Untracked files — delete (junk)".
+# NOTE: items already tracked in b654a93 must also be removed via a follow-up
+#       `git rm --cached` commit; .gitignore alone does not untrack them.
+/runtime_tier0/
+/run_qualifier
+/test_depth_parser_bin
+/debug_det.cpp
+/generate_tests.py
+/egbos_wal_reader.py
+/test_ws_raw.py
+/binance_candle_viewer.py
+/binance_jitter_diagnostic.py
+/binance_ping_diagnostic.py
+/binance_price_viewer.py

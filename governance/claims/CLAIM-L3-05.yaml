@@ -52,7 +52,19 @@ backup_owner: null
 remediation_category: null
 remediation_notes: ''
 minimum_class_for_unblocked_deploy: V3
-rfc_references: []
-review_history: []
+rfc_references:
+  - rfc: "RFC-002"
+    section: "artifacts_changed"
+    anchor: "CLAIM-L3-05"
+review_history:
+  - date: "2026-09-24T12:37:07+01:00"
+    reviewer: "aziz"
+    action: "hash_repin"
+    class_at_review: "V3"
+    notes: >-
+      proof_artifact sha256 for engine/core/execution_router.h updated from
+      e78ba5a3...382360 to 396224dc...f349 to match S6 source change.
+      Verification class, rationale, and deployment-blocking status unchanged.
+      Authorized by RFC-002 (commit b654a93).
 superseded_by: null
 amendments: []

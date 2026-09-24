@@ -1,0 +1,95 @@
+rfc_id:          "RFC-002"
+title:           "Mechanical Hash Re-pins for S6 Source Amendments (LF Normalization + Fixture Correction)"
+status:          "accepted"
+author:          "founder"
+date_opened:     "2026-09-24T12:37:07+01:00"
+date_closed:     "2026-09-24T12:37:07+01:00"
+change_type:     "claim_scope"
+
+# Three proof-artifact SHA-256 fields were updated in commit b654a93 as a direct
+# consequence of source changes made during the S6 software workstream. This RFC
+# records the authorization and evidence for those re-pins.
+#
+# What changed and why:
+#
+#   CLAIM-L3-05 / engine/core/execution_router.h
+#     The file was modified as part of the S6 software workstream (execution router
+#     startup-buffer engineering). The stored sha256 was updated to match the new
+#     on-disk bytes. The claim's verification class (V3), rationale, and deployment-
+#     blocking status are unchanged. No scope change.
+#
+#   CLAIM-L3-02 / engine/core/fix_consumer.cpp
+#     The file was modified as part of the S6 software workstream (GC-E-042
+#     compliance clean-up). The stored sha256 was updated to match the new on-disk
+#     bytes. The claim's verification class (V3), rationale, and deployment-blocking
+#     status are unchanged. No scope change.
+#
+#   CLAIM-LOB-001 / governance/proof_artifacts/golden_lob.bin
+#     The golden fixture was regenerated to correct a byte-order discrepancy
+#     documented in governance/amendments/S2_GOLDEN_LOB_FIXTURE_AMENDMENT.md.
+#     Both the class_rationale SHA and the proof_artifacts entry were updated to
+#     c64ebd32be50fd29385f15f0fdb28115fd2388bedd6cd2288cf1fe25e4c17440.
+#     The claim's verification class (V4), test methodology (3x byte-identical
+#     replay), and GC-E-010 zero-alloc enforcement are unchanged. No scope change.
+#
+# None of these re-pins weaken any verification guarantee. They bring the claim
+# records into agreement with the actual source bytes in the repository.
+
+artifacts_changed:
+  - artifact_id: "CLAIM-L3-05"
+    change_description: >
+      Updated proof_artifact sha256 for engine/core/execution_router.h from
+      e78ba5a3a0169da708422f345bc6d90736f0bffe7be3f08127b80c4bb0382360 to
+      396224dc70755b1eca452101435afc468308f4425fe15369cb6cfa4bcf05f349.
+      Verification class V3 unchanged. Caused by S6 source modification to
+      ExecutionRouter interface (startup buffer sizing).
+  - artifact_id: "CLAIM-L3-02"
+    change_description: >
+      Updated proof_artifact sha256 for engine/core/fix_consumer.cpp from
+      0f5e865c432617a4f68dfc43eab08d6f83415c22a4b6d3d6cfb8b0ec4e00bca6 to
+      b3f5829a6d1befee297f881ceeec9a535f2e1b80b5d0073fc65be9cff5cab30a.
+      Verification class V3 unchanged. Caused by S6 GC-E-042 compliance fix in
+      fix_consumer.cpp.
+  - artifact_id: "CLAIM-LOB-001"
+    change_description: >
+      Updated class_rationale and proof_artifact sha256 for
+      governance/proof_artifacts/golden_lob.bin from
+      c97b85f63d8dc5ec14d4e2c308e3596059d2304e4f535d88a4214c4c5ca4d007 to
+      c64ebd32be50fd29385f15f0fdb28115fd2388bedd6cd2288cf1fe25e4c17440.
+      Golden fixture regenerated; documented in S2_GOLDEN_LOB_FIXTURE_AMENDMENT.md.
+      Verification class V4 and replay methodology unchanged.
+
+rationale: >
+  Source files tracked by V3/V4 claims were modified during the S6 software workstream
+  and as a fixture correction. The proof_artifact sha256 fields must reflect the actual
+  bytes in the repository; stale hashes represent a false provenance claim. These
+  re-pins restore hash accuracy without changing any verification guarantee.
+  Per I6.1, any V3+ claim amendment requires an RFC regardless of whether the change
+  is substantive or mechanical.
+
+alternatives_considered:
+  - alternative: "Amend RFC-001 to cover these claims"
+    rejection_reason: >
+      RFC-001's rationale and change_type concern the S6/S7 paper-trading split — an
+      architectural decision. These re-pins are mechanical source-tracking corrections
+      with a different cause and evidence trail. Conflating them corrupts RFC-001's
+      rationale and makes independent audit harder.
+  - alternative: "Leave review_history empty; rely on govcheck C0 hash check"
+    rejection_reason: >
+      GC-E-053 requires an accepted RFC in artifacts_changed for any V3+ amendment.
+      Hash re-pins are amendments. The govcheck C0 hash check verifies consistency
+      but does not satisfy the RFC-citation requirement.
+
+impact_assessment:
+  claims_invalidated: []
+  claims_requiring_re_proof: []
+  slices_reopened: []
+  capital_gates_affected: []
+
+# Evidence: govcheck validate --scope C0,G2 --strict passed with 0 errors
+# after all three sha256 fields were updated (confirmed 2026-09-24).
+# Commit b654a93808372ab960b37dcdd1db9020adfb639b contains all three amended claims.
+
+approval_authority: "Founder"
+approval_record:    "Govcheck C0+G2 validate passing (0 errors). Founder-reviewed and committed in b654a93."
+supersedes:         null
