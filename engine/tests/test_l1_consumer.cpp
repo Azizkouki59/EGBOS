@@ -10,6 +10,9 @@
 
 #include <gtest/gtest.h>
 #include "engine/l1/l1_consumer.h"
+#include "engine/l1/lob_snapshot_publisher.h"
+#include "engine/l2/lob_snapshot_reader.h"
+#include "engine/l1/lob_engine.h"
 #include "engine/core/shm_layout.h"
 #include "market_event_generated.h"
 
@@ -217,4 +220,32 @@ TEST_F(L1ConsumerTest, SyntheticStaleEvent_DoesNotCreateSequenceGap) {
     EXPECT_EQ(consumer->counts().sequence_gap_detected, 0);
     EXPECT_EQ(consumer->counts().ok, 1);
     EXPECT_EQ(consumer->counts().skipped_while_degraded, 1);
+}
+
+
+// ── L1 -> L2 snapshot publication integration ───────────────────────────────
+TEST_F(L1ConsumerTest, PublishesL1SnapshotToL2) {
+    auto region = std::make_unique<LobSnapshotsRegion>();
+
+    LobSnapshotPublisher publisher(region.get());
+    egbos::l2::LobSnapshotReader reader(region.get());
+
+    auto lob = std::make_unique<LobEngine>(100'000LL, 100LL);
+    L1Consumer integrated_consumer(
+        ring,
+        gov_flags,
+        lob.get(),
+        &publisher
+    );
+
+    push_event(ring, 1, 1, 100'000, 100'000, Side_BUY);
+
+    ASSERT_EQ(integrated_consumer.consume_available(), 1);
+    ASSERT_FALSE(integrated_consumer.is_degraded());
+
+    Top5BidsAsks snapshot{};
+    ASSERT_TRUE(reader.read(0, snapshot));
+
+    EXPECT_EQ(snapshot.bid_qtys[0], 100'000u);
+    EXPECT_GT(snapshot.bid_qtys[0], 0u);
 }

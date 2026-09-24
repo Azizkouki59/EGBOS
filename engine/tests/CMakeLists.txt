@@ -240,6 +240,17 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_compile_features(test_lob_upsert PRIVATE cxx_std_20)
   gtest_discover_tests(test_lob_upsert)
 
+  # ── L2: L1->L2 snapshot transport / ABI test ──
+  add_executable(test_l2_snapshot_reader
+    test_l2_snapshot_reader.cpp
+    ../l1/lob_engine.cpp
+    ../l1/lob_snapshot_publisher.h
+  )
+  target_link_libraries(test_l2_snapshot_reader PRIVATE
+    engine_core engine_l2 GTest::gtest GTest::gtest_main)
+  target_compile_features(test_l2_snapshot_reader PRIVATE cxx_std_20)
+  gtest_discover_tests(test_l2_snapshot_reader)
+
   # CLI and Binance Frame Semantic Tests (DEVELOPMENT_TEST)
   add_executable(test_binance_frame_semantics test_binance_frame_semantics.cpp ../l1/lob_engine.cpp ../l1/depth_parser.cpp)
   target_link_libraries(test_binance_frame_semantics PRIVATE engine_core GTest::gtest GTest::gtest_main)

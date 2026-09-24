@@ -6,6 +6,7 @@
 #include "engine/l0/ingestor.h"
 #include "engine/l1/l1_consumer.h"
 #include "engine/l1/lob_engine.h"
+#include "engine/l1/lob_snapshot_publisher.h"
 #include "engine/core/shm_layout.h"
 #include "engine/core/fixed_point.h"
 #include <iostream>
@@ -214,10 +215,18 @@ int main(int argc, char** argv) {
         ::new (shm_ptrs.governance_flags)
             egbos::shm::GovernanceFlags{};
 
+    auto* lob_snapshots =
+        ::new (shm_ptrs.lob_snapshots)
+            egbos::shm::LobSnapshotsRegion{};
+
+    LobSnapshotPublisher snapshot_publisher(lob_snapshots);
+
     std::cout << "market_events_shm="
               << egbos::shm::kMarketEventsPath << std::endl;
     std::cout << "governance_flags_shm="
               << egbos::shm::kGovernanceFlagsPath << std::endl;
+    std::cout << "lob_snapshots_shm="
+              << egbos::shm::kLobSnapshotsPath << std::endl;
 
     // 2. Setup Ingestor (Thread 1 Context)
     const char* tier0_path = std::getenv("EGBOS_TIER0_PATH");
@@ -255,7 +264,12 @@ int main(int argc, char** argv) {
     });
     
     // 2. Setup Consumer (Thread 2 Context)
-    L1Consumer consumer(*market_events, *gov_flags, nullptr);
+    L1Consumer consumer(
+        *market_events,
+        *gov_flags,
+        nullptr,
+        &snapshot_publisher
+    );
     std::unique_ptr<LobEngine> lob;
     
     std::thread listener_thread([&]() {
@@ -283,6 +297,17 @@ int main(int argc, char** argv) {
                         // before set_lob() so internal upsert was skipped (lob_==null).
                         lob->upsert_synthetic_level(ev->price(), ev->quantity(),
                                                     ev->side() == Side_BUY);
+
+                        const auto first_snapshot =
+                            lob->generate_top5_snapshot();
+                        if (!snapshot_publisher.publish(
+                                ev->instrument_id(), first_snapshot)) {
+                            std::cerr
+                                << "FATAL: first L1->L2 snapshot publish failed"
+                                << std::endl;
+                            g_running = false;
+                        }
+
                         g_lob_updates.fetch_add(1, std::memory_order_relaxed);
                     }
                 } else {

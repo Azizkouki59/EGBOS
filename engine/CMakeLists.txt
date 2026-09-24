@@ -70,6 +70,18 @@ target_include_directories(engine_l1 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_
 target_link_libraries(engine_l1 PUBLIC engine_core)
 target_compile_features(engine_l1 PUBLIC cxx_std_20)
 
+# ── L2 Feature Engine transport boundary ──
+# Current scope: L1->L2 snapshot reader only.
+# Quantitative feature formulas/registry are intentionally out of scope until
+# the missing authoritative feature specification is resolved.
+add_library(engine_l2 INTERFACE)
+target_include_directories(engine_l2 INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}
+)
+target_link_libraries(engine_l2 INTERFACE engine_core)
+target_compile_features(engine_l2 INTERFACE cxx_std_20)
+
 install(TARGETS engine_core EXPORT egbosTargets)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ DESTINATION include/engine FILES_MATCHING PATTERN "*.h")
 

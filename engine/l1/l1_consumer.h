@@ -24,6 +24,8 @@
 
 namespace egbos::l1 {
 
+class LobSnapshotPublisher;
+
 // ── EventCounts ───────────────────────────────────────────────────────────────
 // Counters for events observed by the L1Consumer.  Replaces ParseResultCounts
 // now that JSON parsing has moved to L0.
@@ -47,10 +49,19 @@ class L1Consumer {
 public:
     explicit L1Consumer(shm::MarketEventsRegion& ring,
                         shm::GovernanceFlags&    gov_flags,
-                        LobEngine*               lob = nullptr) noexcept
-        : ring_(ring), gov_flags_(gov_flags), lob_(lob) {}
+                        LobEngine*               lob = nullptr,
+                        LobSnapshotPublisher*   snapshot_publisher = nullptr) noexcept
+        : ring_(ring),
+          gov_flags_(gov_flags),
+          lob_(lob),
+          snapshot_publisher_(snapshot_publisher) {}
 
     void set_lob(LobEngine* lob) noexcept { lob_ = lob; }
+
+    void set_snapshot_publisher(
+        LobSnapshotPublisher* publisher) noexcept {
+        snapshot_publisher_ = publisher;
+    }
 
     // consume_one: pop one slot and process it.
     // Returns true if a slot was available and consumed, false if ring was empty.
@@ -80,6 +91,7 @@ private:
     shm::MarketEventsRegion& ring_;
     shm::GovernanceFlags&    gov_flags_;
     LobEngine*               lob_ = nullptr;
+    LobSnapshotPublisher*    snapshot_publisher_ = nullptr;
 
     EventCounts counts_{};
     uint64_t    slots_popped_         = 0;

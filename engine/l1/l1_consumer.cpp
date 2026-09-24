@@ -7,6 +7,7 @@
 // RawMarketEvent::sequence_num() instead of ParsedDepthUpdate::first_update_id.
 
 #include "l1_consumer.h"
+#include "lob_snapshot_publisher.h"
 
 #include <cstdio>
 #include <cstring>
@@ -114,6 +115,16 @@ void L1Consumer::process_slot(const shm::MarketEventSlot& slot) noexcept {
     if (lob_) {
         lob_->upsert_synthetic_level(event->price(), event->quantity(),
                                      event->side() == egbos::events::Side_BUY);
+
+        // Publish only after the L1 state mutation is complete.
+        // First-event initialization paths that have no LobEngine yet are
+        // intentionally unchanged.
+        if (snapshot_publisher_ != nullptr) {
+            const Top5BidsAsks snapshot = lob_->generate_top5_snapshot();
+            (void)snapshot_publisher_->publish(
+                event->instrument_id(),
+                snapshot);
+        }
     }
 }
 

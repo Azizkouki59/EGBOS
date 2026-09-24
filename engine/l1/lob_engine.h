@@ -11,6 +11,7 @@
 #include "engine/core/fixed_point.h"
 #include "engine/core/pool_allocator.h"
 #include "engine/core/shm_layout.h"
+#include "engine/core/lob_snapshot_abi.h"
 #include "engine/l1/depth_parser.h"  // ParsedDepthUpdate
 
 namespace egbos::l1 {
@@ -29,15 +30,7 @@ struct OrderNode {
     OrderNode* prev;
 };
 
-// Top 5 Book cache-aligned struct (exactly 64 bytes)
-struct alignas(64) Top5BidsAsks {
-    uint32_t bid_qtys[5];         // Quantities (widened to 32-bit to avoid 10^7 saturation)
-    uint32_t ask_qtys[5];
-    int16_t  bid_price_offsets[5]; // Price offsets from anchor (fits in int16_t since kMaxPriceLevels=65536)
-    int16_t  ask_price_offsets[5];
-    uint32_t anchor_price_low32;  // Lowest 32 bits of anchor or metadata
-};
-static_assert(sizeof(Top5BidsAsks) == 64, "Top5BidsAsks must be exactly 64 bytes for L2 cache alignment");
+// Top5BidsAsks transport ABI lives in engine/core/lob_snapshot_abi.h.
 
 // Flat array limit order book (Zero pointer chasing across heap)
 class LobEngine {
