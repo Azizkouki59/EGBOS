@@ -480,6 +480,12 @@ public:
         bool was_clean;  // true if WAL ended without corruption/gaps
     };
 
+    // Called after a record passes all WAL integrity checks (CRC, payload
+    // validation, and sequence continuity). The visitor is read-only and may
+    // derive caller-owned state without introducing WAL-to-state coupling.
+    using ValidRecordVisitor =
+        void (*)(const WalRecord& record, void* context) noexcept;
+
     // ── Constructor ──────────────────────────────────────────────────────────
     // Opens WAL primary (O_DSYNC) and shadow files, initialises io_uring,
     // scans existing WAL for sequence continuity.
@@ -685,18 +691,22 @@ public:
     //   1. CRC32C Verification — first CRC failure = truncation point
     //   2. Sequence Gap Detection — gaps = truncation point
     //
-    // Step 3 (State Reconstruction) is the caller's responsibility.
+    // Step 3 (state reconstruction) remains the caller's responsibility.
+    // A read-only visitor may consume records after integrity validation.
     // Step 4 (RFP Reconciliation) is blocked until S5.
     // Step 5 (Recovery Sign-Off) is synthetic in S1.
 
 #if defined(__linux__)
-    static RecoveryResult scan_wal(const char* path) noexcept {
+    static RecoveryResult scan_wal(
+        const char* path,
+        ValidRecordVisitor visitor = nullptr,
+        void* context = nullptr) noexcept {
         int fd = ::open(path, O_RDONLY);
         if (fd < 0) {
             // File doesn't exist — fresh start, no recovery needed
             return RecoveryResult{0, 0, 0, true};
         }
-        RecoveryResult result = scan_wal_fd(fd);
+        RecoveryResult result = scan_wal_fd(fd, visitor, context);
         ::close(fd);
         return result;
     }
@@ -752,7 +762,10 @@ private:
     // mutation). Validates CRC32C and sequence monotonicity.
 
 #if defined(__linux__)
-    static RecoveryResult scan_wal_fd(int fd) noexcept {
+    static RecoveryResult scan_wal_fd(
+        int fd,
+        ValidRecordVisitor visitor = nullptr,
+        void* context = nullptr) noexcept {
         RecoveryResult result{0, 0, 0, true};
 
         struct stat st;
@@ -835,6 +848,13 @@ private:
             if (!first_record && rec->sequence != prev_seq + 1) {
                 result.was_clean = false;
                 break;  // Sequence gap — truncation point
+            }
+
+            // Valid record — optionally hand it to the caller after every
+            // integrity check has passed. The record references stack-local
+            // scanner storage and is valid only for the duration of this call.
+            if (visitor != nullptr) {
+                visitor(*rec, context);
             }
 
             // Valid record — advance

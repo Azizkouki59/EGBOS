@@ -45,7 +45,7 @@ FetchContent_Declare(googletest
 )
 
 FetchContent_Declare(flatbuffers
-  URL https://github.com/google/flatbuffers/archive/refs/tags/v23.5.26.tar.gz
+  URL https://github.com/google/flatbuffers/archive/refs/tags/v24.3.25.tar.gz
 )
 
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)  # yaml-cpp 0.8.0 declares cmake_minimum_required < 3.5

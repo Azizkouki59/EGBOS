@@ -28,6 +28,7 @@ add_custom_target(generate_schemas DEPENDS ${GENERATED_HEADERS})
 
 add_library(schemas_lib INTERFACE)
 target_include_directories(schemas_lib INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+target_link_libraries(schemas_lib INTERFACE flatbuffers)
 add_dependencies(schemas_lib generate_schemas)
 
 install(TARGETS schemas_lib EXPORT egbosTargets)

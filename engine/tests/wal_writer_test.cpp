@@ -530,6 +530,96 @@ TEST(WalWriterTest, PayloadOversizeCallsFatal) {
 // was_clean == false; corrupted record NOT counted in valid_records.
 // ─────────────────────────────────────────────────────────────────────────────
 
+
+struct PositionVisitorProbe {
+    int64_t positions[16]{};
+    uint64_t fill_applied_records{0};
+};
+
+void consume_position_probe(const egbos::wal::WalRecord& record,
+                            void* context) noexcept {
+    auto* probe = static_cast<PositionVisitorProbe*>(context);
+
+    if (record.record_type !=
+        static_cast<uint32_t>(egbos::wal::WalRecordType::FILL_APPLIED)) {
+        return;
+    }
+
+    if (record.instrument_id >= 16) {
+        probe->fill_applied_records = UINT64_MAX;
+        return;
+    }
+
+    ++probe->fill_applied_records;
+    probe->positions[record.instrument_id] += record.quantity_delta;
+}
+
+TEST(WalWriterTest, VisitorReceivesOnlyValidatedFillRecords) {
+    TempDir tmp;
+
+    {
+        egbos::wal::WalWriter writer(tmp.primary_path().c_str(),
+                                     tmp.shadow_path().c_str());
+
+        alignas(8) uint8_t buf1[egbos::wal::kWalHeaderWireSize]{};
+        auto* rec1 = reinterpret_cast<egbos::wal::WalRecord*>(buf1);
+        fill_test_record(rec1, egbos::wal::WalRecordType::FILL_APPLIED,
+                         7, 10, 1001);
+        writer.write_sync(rec1);
+
+        alignas(8) uint8_t buf2[egbos::wal::kWalHeaderWireSize]{};
+        auto* rec2 = reinterpret_cast<egbos::wal::WalRecord*>(buf2);
+        fill_test_record(rec2, egbos::wal::WalRecordType::FILL_APPLIED,
+                         7, -4, 1002);
+        writer.write_sync(rec2);
+
+        alignas(8) uint8_t buf3[egbos::wal::kWalHeaderWireSize]{};
+        auto* rec3 = reinterpret_cast<egbos::wal::WalRecord*>(buf3);
+        fill_test_record(rec3, egbos::wal::WalRecordType::FILL_APPLIED,
+                         12, 3, 1003);
+        writer.write_sync(rec3);
+
+        alignas(8) uint8_t buf4[egbos::wal::kWalHeaderWireSize]{};
+        auto* rec4 = reinterpret_cast<egbos::wal::WalRecord*>(buf4);
+        fill_test_record(rec4, egbos::wal::WalRecordType::FILL_APPLIED,
+                         7, 99, 1004);
+        writer.write_sync(rec4);
+    }
+
+    // Corrupt the fourth record's record_type byte. This must invalidate
+    // its header CRC, so the visitor must never receive that record.
+    {
+        const int fd = ::open(tmp.primary_path().c_str(), O_RDWR);
+        ASSERT_GE(fd, 0);
+
+        const off_t corrupt_offset =
+            static_cast<off_t>(3 * egbos::wal::kWalHeaderWireSize);
+
+        uint8_t bad_byte = 0x00;
+        ASSERT_EQ(::pwrite(fd, &bad_byte, 1, corrupt_offset), 1);
+        ASSERT_EQ(::close(fd), 0);
+    }
+
+    PositionVisitorProbe probe{};
+
+    const auto result = egbos::wal::WalWriter::scan_wal(
+        tmp.primary_path().c_str(),
+        consume_position_probe,
+        &probe);
+
+    EXPECT_FALSE(result.was_clean);
+    EXPECT_EQ(result.valid_records, 3u);
+
+    // WAL-only reconstruction:
+    // instrument 7: +10 -4 = +6
+    // instrument 12: +3
+    EXPECT_EQ(probe.fill_applied_records, 3u);
+    EXPECT_EQ(probe.positions[7], 6);
+    EXPECT_EQ(probe.positions[12], 3);
+    EXPECT_EQ(probe.positions[0], 0);
+    EXPECT_EQ(probe.positions[1], 0);
+}
+
 TEST(WalWriterTest, PayloadCrcDetectsCorruption) {
     TempDir tmp;
 
