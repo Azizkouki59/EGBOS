@@ -55,13 +55,15 @@ public:
 
     // Reads one coherent active-buffer snapshot.
     //
-    // Reader contract:
-    //   1. acquire active buffer
-    //   2. acquire sequence
-    //   3. reject odd sequence
+    // Reader contract (7 steps):
+    //   1. acquire active buffer index
+    //   2. acquire sequence from that buffer
+    //   3. reject odd sequence (write in progress — retry)
     //   4. copy exactly 64 defined payload bytes
     //   5. acquire fence
-    //   6. re-check sequence and active buffer
+    //   6. re-check sequence — must equal seq from step 2
+    //   7. re-check active buffer — must equal buffer from step 1
+    //   Accept only when both step 6 and step 7 match.
     //
     // No dynamic allocation, clock, PRNG, or external I/O.
     bool read(
@@ -87,6 +89,10 @@ public:
 
             const uint64_t seq1 =
                 buffer.sequence.load(std::memory_order_acquire);
+
+            if (seq1 == 0) {
+                return false;
+            }
 
             if (seq1 & 1u) {
                 continue;

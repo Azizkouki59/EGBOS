@@ -243,6 +243,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   # ── L2: L1->L2 snapshot transport / ABI test ──
   add_executable(test_l2_snapshot_reader
     test_l2_snapshot_reader.cpp
+    test_feature_engine.cpp
     ../l1/lob_engine.cpp
     ../l1/lob_snapshot_publisher.h
   )
