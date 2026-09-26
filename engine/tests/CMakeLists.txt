@@ -252,6 +252,20 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_compile_features(test_l2_snapshot_reader PRIVATE cxx_std_20)
   gtest_discover_tests(test_l2_snapshot_reader)
 
+  # ── L2: Hawkes intensity unit tests ──────────────────────────────────────
+  # governance/claims/CLAIM-L2-HAWKES-001.yaml (status: pending)
+  #
+  # CRITICAL ISOLATION: links engine_l2_hawkes (pending module) but NOT
+  # engine_l2 (production module). This must not enter the production
+  # FeatureEngine object file until the claim is active.
+  add_executable(test_hawkes_intensity
+    test_hawkes_intensity.cpp
+  )
+  target_link_libraries(test_hawkes_intensity PRIVATE
+    engine_l2_hawkes GTest::gtest GTest::gtest_main)
+  target_compile_features(test_hawkes_intensity PRIVATE cxx_std_20)
+  gtest_discover_tests(test_hawkes_intensity)
+
   # CLI and Binance Frame Semantic Tests (DEVELOPMENT_TEST)
   add_executable(test_binance_frame_semantics test_binance_frame_semantics.cpp ../l1/lob_engine.cpp ../l1/depth_parser.cpp)
   target_link_libraries(test_binance_frame_semantics PRIVATE engine_core GTest::gtest GTest::gtest_main)

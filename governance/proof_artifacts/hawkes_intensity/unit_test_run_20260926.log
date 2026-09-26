@@ -1,0 +1,33 @@
+Running main() from /home/aziz/EGBOS/egbos/build_hawkes/_deps/googletest-src/googletest/src/gtest_main.cc
+[0;32m[==========] [mRunning 12 tests from 1 test suite.
+[0;32m[----------] [mGlobal test environment set-up.
+[0;32m[----------] [m12 tests from HawkesIntensity
+[0;32m[ RUN      ] [mHawkesIntensity.ColdState_IsUninitializedAndZero
+[0;32m[       OK ] [mHawkesIntensity.ColdState_IsUninitializedAndZero (0 ms)
+[0;32m[ RUN      ] [mHawkesIntensity.FirstEvent_EqualsMuPlusAlpha
+[0;32m[       OK ] [mHawkesIntensity.FirstEvent_EqualsMuPlusAlpha (0 ms)
+[0;32m[ RUN      ] [mHawkesIntensity.SecondEvent_DecaysThenJumps
+[0;32m[       OK ] [mHawkesIntensity.SecondEvent_DecaysThenJumps (0 ms)
+[0;32m[ RUN      ] [mHawkesIntensity.EqualTimestamps_NoDecayJumpOnly
+[0;32m[       OK ] [mHawkesIntensity.EqualTimestamps_NoDecayJumpOnly (0 ms)
+[0;32m[ RUN      ] [mHawkesIntensity.TinyDeltaT_DecayNearlyOne
+[0;32m[       OK ] [mHawkesIntensity.TinyDeltaT_DecayNearlyOne (0 ms)
+[0;32m[ RUN      ] [mHawkesIntensity.LargeDeltaT_DecaysToBaselinePlusAlpha
+[0;32m[       OK ] [mHawkesIntensity.LargeDeltaT_DecaysToBaselinePlusAlpha (0 ms)
+[0;32m[ RUN      ] [mHawkesIntensity.NonMonotonicTime_ReturnsInvalidAndDoesNotMutateOutput
+[0;32m[       OK ] [mHawkesIntensity.NonMonotonicTime_ReturnsInvalidAndDoesNotMutateOutput (0 ms)
+[0;32m[ RUN      ] [mHawkesIntensity.VeryLargeButValidDeltaT_DoesNotOverflowComputation
+[0;32m[       OK ] [mHawkesIntensity.VeryLargeButValidDeltaT_DoesNotOverflowComputation (0 ms)
+[0;32m[ RUN      ] [mHawkesIntensity.Reset_ReturnsToColdState
+[0;32m[       OK ] [mHawkesIntensity.Reset_ReturnsToColdState (0 ms)
+[0;32m[ RUN      ] [mHawkesIntensity.DeterministicReplay_SameInputsSameOutputs
+[0;32m[       OK ] [mHawkesIntensity.DeterministicReplay_SameInputsSameOutputs (0 ms)
+[0;32m[ RUN      ] [mHawkesIntensity.Overflow_ReturnsInvalidWithoutMutatingState
+[0;32m[       OK ] [mHawkesIntensity.Overflow_ReturnsInvalidWithoutMutatingState (0 ms)
+[0;32m[ RUN      ] [mHawkesIntensity.Overflow_OnSubsequentEvent_DoesNotMutateState
+[0;32m[       OK ] [mHawkesIntensity.Overflow_OnSubsequentEvent_DoesNotMutateState (0 ms)
+[0;32m[----------] [m12 tests from HawkesIntensity (0 ms total)
+
+[0;32m[----------] [mGlobal test environment tear-down
+[0;32m[==========] [m12 tests from 1 test suite ran. (0 ms total)
+[0;32m[  PASSED  ] [m12 tests.

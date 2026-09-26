@@ -82,6 +82,24 @@ target_include_directories(engine_l2 PUBLIC
 target_link_libraries(engine_l2 PUBLIC engine_core)
 target_compile_features(engine_l2 PUBLIC cxx_std_20)
 
+# ── L2 Hawkes intensity module (PENDING — header-only) ──────────────────
+# See governance/claims/CLAIM-L2-HAWKES-001.yaml (status: pending) and
+# governance/rfcs/RFC-003-L2-HAWKES-VPIN-FEATURE-SCOPING.yaml.
+#
+# CRITICAL ISOLATION: engine_l2_hawkes is intentionally NOT linked into
+# engine_l2. CLAIM-L2-HAWKES-001 is pending, not active — this module must
+# not enter the production FeatureEngine binary until the claim is reviewed,
+# an offline reference implementation exists for DIRC parity, and the claim
+# status is updated to active with a feature_id assigned. Linking this into
+# engine_l2 before then is a governance violation and must be rejected in
+# code review.
+add_library(engine_l2_hawkes INTERFACE)
+target_include_directories(engine_l2_hawkes INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}
+)
+target_compile_features(engine_l2_hawkes INTERFACE cxx_std_20)
+
 install(TARGETS engine_core EXPORT egbosTargets)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ DESTINATION include/engine FILES_MATCHING PATTERN "*.h")
 

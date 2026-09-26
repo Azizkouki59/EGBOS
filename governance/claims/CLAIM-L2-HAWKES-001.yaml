@@ -19,16 +19,17 @@ text: >
   GapEvent, mirroring LOB reset semantics. Numerical overflow of accumulated
   intensity returns an explicit INVALID status rather than silently clamping.
 class_rationale: >
-  V4: Static enforcement (existing GC-E-054 / Clang AST no-malloc scanner
+  V4: Static enforcement (GC-E-010 no-malloc/no-new Clang AST scanner
   applies unchanged to this code path) + dynamic proof via unit tests
   covering empty state, single/multiple events, equal timestamps, tiny/large
   delta-t, warmup, reset-on-gap, and deterministic replay, plus DIRC
   cross-language byte-identical comparison against an offline Python
   reference implementation once one exists.
-enforcement_mechanism: govcheck GC-E-054 no-malloc scanner + engine/tests/test_hawkes_intensity.cpp + DIRC byte-identical replay comparison (offline reference not yet implemented)
+enforcement_mechanism: govcheck GC-E-010 no-malloc/no-new scanner + engine/tests/test_hawkes_intensity.cpp + DIRC byte-identical replay comparison (offline reference not yet implemented)
 enforcement_scope: engine/l2/feature_engine.cpp
 enforcement_gaps:
   - "No offline (Python/Polars) reference implementation exists yet; DIRC byte-identical cross-language check (per EGBOS_MASTER.md L3B.1) cannot be run until one is written. This claim must not be marked verified/certified until that comparison passes."
+  - "The project's own govcheck static scanner (governance/../govcheck/) has a configured CMake build directory but no compiled binary at time of this claim; GC-E-010 compliance for this file was verified manually via g++ -O2 -S disassembly inspection (see proof_artifacts) rather than the authoritative govcheck tool. Re-verification with the real govcheck binary is required before this claim can move to active."
   - "Baseline mu / excitation alpha,beta have no calibrated values; initial values are placeholders pending offline research, tracked as an open parameter in RFC-003."
   - "Feature has not yet been assigned a feature_id or FeatureVector payload offset; both are TBD at implementation time and must be recorded here once assigned."
 assumptions:
@@ -36,7 +37,23 @@ assumptions:
   - "Depth-event arrivals are an acceptable proxy for the point process being modeled; this is an explicit scope decision recorded in RFC-003, not an assumption that the depth stream equals trade arrival intensity."
 composition_dependencies: []
 composed_verification_class: V4
-proof_artifacts: []
+proof_artifacts:
+  - path: governance/proof_artifacts/hawkes_intensity/unit_test_run_20260926.log
+    timestamp: '2026-09-26T16:43:22Z'
+    hardware_id: HW-SIM-1
+    sha256: a8434b129462c0d390cbfaa06b40baf3fe6e48b8fa0a35888c8791c8da86bef3
+    type: log
+    description: >
+      12/12 gtest cases pass (engine/tests/test_hawkes_intensity.cpp),
+      covering cold state, first-event warmup, multi-event decay+jump,
+      dt=0, tiny/large dt, non-monotonic time rejection, reset, deterministic
+      replay (bit-identical), and overflow (both cold-start and
+      post-initialization paths), each with independently hand-computed
+      expected values, not implementation-derived values. Additionally
+      verified by direct assembly inspection (g++ -O2 -S on an isolated
+      translation unit including only hawkes_intensity.h) that
+      hawkes_on_event() emits zero calls to malloc/operator new/operator
+      new[], satisfying GC-E-010.
 review_authority: founder
 deployment_blocking: false
 deployment_blocking_rationale: >
