@@ -1,0 +1,70 @@
+rfc_id:          "RFC-003"
+title:           "L2 Microstructure Feature Scoping: Hawkes Intensity (proposed) and VPIN (blocked)"
+status:          "proposed"
+author:          "assistant-guided-session"
+date_opened:     "2026-09-26T00:00:00Z"
+date_closed:     null
+change_type:     "feature_contract | scope_deferral"
+artifacts_changed:
+  - artifact_id: "engine/l2/feature_engine.cpp"
+    change_description: "Proposed addition of a Hawkes self-exciting intensity feature computed on the existing L0 depth-event stream (NEW/CANCEL events), gated behind a new feature_id and validity bit. No change to L1 or L0 in this RFC."
+  - artifact_id: "CLAIM-L2-HAWKES-001 (new)"
+    change_description: "To be created once this RFC is accepted, defining the exact Hawkes parameterization, enforcement mechanism, and required proof artifacts."
+rationale: >
+  EGBOS_MASTER.md §DOM-05 and §L3B.1 name Hawkes and VPIN as constitutionally
+  required features (latency budget, zero-allocation, DIRC byte-identical
+  parity) but no mathematical definition, event source, or parameter set for
+  either exists anywhere in governance/, docs/, or engine/. No claim
+  currently gates L2 feature work. This RFC records that evidence and
+  proposes a path forward for each feature separately, since their inputs
+  differ fundamentally.
+evidence:
+  - "grep across engine/, governance/, docs/ finds only 6 references to Hawkes/VPIN, all in EGBOS_MASTER.md at the constitutional/requirements level (no formula)."
+  - "engine/l0/binance_feed_listener.cpp subscribes only to btcusdt@depth@100ms; no @trade or @aggTrade stream exists."
+  - "engine/l0/binance_json_normalizer.cpp only ever constructs EventType::NEW or EventType::CANCEL; EventType::TRADE is defined in schemas/market_event.fbs but never emitted."
+  - "RawMarketEvent::exchange_tsc is hardcoded to 0 with inline comment 'not available in @depth stream'; ingestion_tsc (local CLOCK_MONOTONIC_RAW) is the only real timestamp available."
+  - "governance/exit-gates/SLICE-S6-exit-v1.yaml and SLICE-S7-exit-v1.yaml contain no reference to Hawkes, VPIN, L2, or 'feature'."
+  - "An untracked, uncommitted directory engine/l2/candidates/ was found citing a 'canonical spec' and 'OPEN_DECISIONS.md' that do not exist anywhere in this repository (tracked or untracked). Their contents are NOT used as authority anywhere in this RFC or any related implementation."
+proposal_hawkes:
+  status: "computable with explicit open parameters"
+  event_source: "L0 depth-event stream (RawMarketEvent, EventType in {NEW, CANCEL}), per-instrument, per-side"
+  timestamp_source: "ingestion_tsc (CLOCK_MONOTONIC_RAW at WebSocket frame receipt); exchange_tsc is unavailable and MUST NOT be used"
+  open_parameters_requiring_decision:
+    - "univariate (all events pooled) vs multivariate (separate intensity per side / per event type)"
+    - "excitation kernel: exponential (single decay) vs power-law; exponential proposed for O(1) update cost under the 200µs/zero-alloc constraint"
+    - "baseline intensity mu and excitation alpha/decay beta: no historical calibration data exists yet; propose starting as configurable named constants in config/, NOT hardcoded, pending offline calibration"
+    - "warmup / cold-start behavior before the process has seen enough events"
+    - "reset behavior on GapEvent (per EGBOS_MASTER.md Gap Event Emission: LOB engine clears book on sequence gap) -- proposed: Hawkes state resets to baseline mu on GapEvent, mirroring LOB reset semantics"
+    - "numerical stability bound on decayed intensity accumulation (proposed: clamp to a documented max intensity, return INVALID status if exceeded, never silently clamp to 0)"
+  proposed_minimal_scope: "Single-instrument, single (pooled bid+ask) univariate Hawkes intensity with exponential kernel, exact-update (no discretization), feature_id and payload offset TBD by claim author at implementation time."
+proposal_vpin:
+  status: "blocked -- no viable input exists"
+  blocking_reason: >
+    VPIN requires classified (buy/sell aggressor) trade volume bucketed by
+    cumulative volume. EGBOS currently ingests only order-book depth diffs;
+    no trade print stream is subscribed to, and no code path ever produces
+    EventType::TRADE or a non-UNKNOWN Side value tied to trade aggressor
+    direction. Implementing VPIN would first require a separate, independently
+    reviewed L0 change (new @aggTrade subscription, normalizer path, schema
+    wiring) which is out of scope for a feature-engine change and is NOT
+    proposed by this RFC.
+  recommendation: "Defer VPIN to a future RFC scoped explicitly as an L0 feed addition, reviewed and accepted on its own before any VPIN math is written."
+alternatives_considered:
+  - alternative: "Implement VPIN using depth-event proxy (e.g. classify by which side array changed) instead of real trade data"
+    rejection_reason: "This is not VPIN; it would silently misrepresent order-flow toxicity as trade-flow toxicity. Rejected on the same 'No-Invention' principle already applied to OFI in this codebase (a snapshot-delta proxy must never be named after the metric it approximates)."
+  - alternative: "Hardcode Hawkes parameters without config surface"
+    rejection_reason: "Violates DIRC cross-language parity requirements; parameters must be identical and inspectable in both C++ and any offline Python prototype, which requires an external, versioned config source."
+impact_assessment:
+  claims_invalidated: []
+  claims_requiring_re_proof: []
+  slices_reopened: []
+  capital_gates_affected: []
+  note: >
+    No S6 or S7 exit-gate criterion references L2 features. This RFC does
+    not reopen or affect S6/S7 acceptance criteria. Any change to
+    engine/l2/feature_engine.cpp made under this RFC must be re-verified
+    against S6-AC-001 (48h clean staging run) before that criterion is
+    signed off, since S6-AC-001 status is currently PENDING.
+approval_authority: "CTO + Governance Board"
+approval_record:    "PENDING"
+supersedes:         null
