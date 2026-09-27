@@ -1,0 +1,19 @@
+Running main() from /home/aziz/EGBOS/egbos/build/_deps/googletest-src/googletest/src/gtest_main.cc
+[==========] Running 5 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 5 tests from Tier0ThresholdTest
+[ RUN      ] Tier0ThresholdTest.DoesNotFlushBeforeFiveMsOr64KB
+[       OK ] Tier0ThresholdTest.DoesNotFlushBeforeFiveMsOr64KB (0 ms)
+[ RUN      ] Tier0ThresholdTest.FlushesAtFiveMsDuringIdleCheck
+[       OK ] Tier0ThresholdTest.FlushesAtFiveMsDuringIdleCheck (0 ms)
+[ RUN      ] Tier0ThresholdTest.FlushesAt64KB
+[       OK ] Tier0ThresholdTest.FlushesAt64KB (0 ms)
+[ RUN      ] Tier0ThresholdTest.FsyncFailurePreventsSpscPublication
+[       OK ] Tier0ThresholdTest.FsyncFailurePreventsSpscPublication (0 ms)
+[ RUN      ] Tier0ThresholdTest.FsyncFailure_FeedStaleNotClearedByProcessPayload
+[       OK ] Tier0ThresholdTest.FsyncFailure_FeedStaleNotClearedByProcessPayload (0 ms)
+[----------] 5 tests from Tier0ThresholdTest (1 ms total)
+
+[----------] Global test environment tear-down
+[==========] 5 tests from 1 test suite ran. (1 ms total)
+[  PASSED  ] 5 tests.

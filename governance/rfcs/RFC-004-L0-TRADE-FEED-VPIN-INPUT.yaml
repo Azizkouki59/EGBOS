@@ -355,33 +355,21 @@ engineering_findings:
 
   raw_market_event_field_capacity_check:
     finding: >
-      RawMarketEvent::quantity is uint32_t. binance_json_normalizer.cpp
-      currently casts a scaled (kL0PriceScale=100000) int64_t quantity value
-      directly to uint32_t with only a "clamp negative to 0" guard
-      (static_cast<uint32_t>(qty_val > 0 ? qty_val : 0)) -- there is no
-      overflow check against UINT32_MAX. This existing behavior predates
-      RFC-004 and affects the depth path today; it is not introduced by
-      trade-event handling, but it directly bounds question 7 (is
-      RawMarketEvent sufficient without a schema change): the maximum
-      representable scaled quantity is UINT32_MAX / 100000 = 42949.67,
-      i.e. quantities at or above ~42,949 base-asset units (e.g. BTC) would
-      silently truncate/wrap under the current cast. For BTCUSDT trade
-      sizes this is not a practical concern (typical trade sizes are far
-      smaller), but it is a real, pre-existing correctness gap that is not
-      fixed by this RFC and should not be silently inherited by the trade
-      path without an explicit decision to accept, or fix, it.
+      RawMarketEvent::quantity is uint32_t. The current L0 Binance normalizer
+      explicitly rejects any parsed scaled quantity greater than UINT32_MAX
+      before the uint32_t cast, returning L0ParseStatus::OVERFLOW. This guard
+      is present in the existing depth path and therefore the earlier
+      truncation/wrap concern is no longer an active implementation defect on
+      that path. The trade path must apply the same explicit overflow rule
+      before constructing RawMarketEvent.
     conclusion: >
-      Question 7: RawMarketEvent's 64-byte layout has enough named fields
-      (event_type, side, quantity, sequence_num, ingestion_tsc,
-      exchange_tsc, price, instrument_id) to carry a normalized trade
-      without a schemas/market_event.fbs change -- consistent with
+      Question 7: the RawMarketEvent 64-byte layout has enough named fields
+      (event_type, side, quantity, sequence_num, ingestion_tsc, exchange_tsc,
+      price, instrument_id) to carry a normalized trade without a
+      schemas/market_event.fbs change, consistent with
       event_abi.decision (PROPOSED_REUSE_EXISTING_RAW_MARKET_EVENT).
-      However this finding documents a real existing quantity-overflow gap
-      in the uint32_t cast that any trade-quantity implementation will
-      inherit unless explicitly addressed; it is not a new problem
-      introduced by trade support, but it should not be silently
-      carried forward either. This is recorded as a pre-existing gap,
-      not a blocker specific to RFC-004.
+      The accepted implementation must preserve the existing explicit
+      uint32_t quantity-overflow rejection semantics for the trade parser.
 
 approval_authority: "CTO + Governance Board"
 approval_record: "PENDING"
