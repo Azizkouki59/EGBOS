@@ -19,8 +19,16 @@ title: "EGBOS Live Market Data Source Specification — Binance"
 status: "COUNTERSIGNED"
 countersignature:
   signer: "founder"
-  date:   "2026-08-19"
-  git_commit_sha: "26633896424d1ceda3818087ac50a379bd2e8778"
+  date:   "2026-08-25"
+  git_commit_sha: "acffd2670d9e5656d932f37fb275aff00f35f976"
+  # Metadata correction (see RFC-004 engineering_findings,
+  # market_data_001_countersignature_inconsistency): the original date
+  # (2026-08-19) and git_commit_sha (26633896...) predated and were
+  # unrelated to the actual signing commits. Corrected here to reference
+  # acffd2670 ("chore(gov): finalize MARKET-DATA-001 authorization",
+  # 2026-08-25T11:04:54+02:00), the commit that actually replaced the
+  # signer placeholder with "founder". The signer identity itself was
+  # never in question -- only these two metadata fields were stale.
 
 # ──────────────────────────────────────────────────────────────────────
 # SOURCE IDENTITY
