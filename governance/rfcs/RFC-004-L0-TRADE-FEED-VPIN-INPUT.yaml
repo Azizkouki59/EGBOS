@@ -1,0 +1,361 @@
+rfc_id:          "RFC-004"
+title:           "L0 Trade Feed Input Contract for VPIN"
+status:          "proposed"
+author:          "assistant-guided-session"
+date_opened:     "2026-09-26T00:00:00Z"
+date_closed:     null
+change_type:     "market_data_feed | transport_contract | feature_input"
+artifacts_changed: []
+
+rationale: >
+  RFC-003 explicitly deferred VPIN because EGBOS had no executed-trade input.
+  The countersigned MARKET-DATA-001 document already authorizes the Binance
+  Trade Stream (<symbol>@trade). This RFC defines the missing L0 trade-input
+  contract without implementing VPIN mathematics.
+
+authority:
+  primary: "governance/MARKET-DATA-001.yaml"
+  secondary: "docs/S2_INSTITUTIONAL_SPEC.md"
+  prior_scope: "governance/rfcs/RFC-003-L2-HAWKES-VPIN-FEATURE-SCOPING.yaml"
+
+input_stream:
+  provider: "Binance"
+  stream: "<symbol>@trade"
+  reason: >
+    Use the already-countersigned Trade Stream in MARKET-DATA-001.
+    Do not substitute @aggTrade without a separate governance amendment.
+  message_class: "individual executed trade events"
+
+required_trade_fields:
+  price: "Binance p"
+  quantity: "Binance q"
+  trade_id: "Binance t"
+  event_time_ms: "Binance T"
+  maker_flag: "Binance m"
+  receive_timestamp: "L0 rx_timestamp_ns / CLOCK_MONOTONIC_RAW"
+
+direction:
+  source: "Binance m"
+  definition:
+    m_true: "buyer is maker; sell-side aggressor"
+    m_false: "buyer is taker; buy-side aggressor"
+  normalization: "BUY = buy aggressor, SELL = sell aggressor"
+  schema_semantics: >
+    For EventType::TRADE, Side represents aggressor direction.
+    Existing NEW/CANCEL semantics remain book side (BUY=bid, SELL=ask).
+    L1 MUST reject TRADE events before any LOB mutation.
+
+raw_event_mapping:
+  event_type: "EventType::TRADE"
+  side: "PENDING — trade aggressor representation must be explicitly ratified"
+  sequence_num: "PENDING — trade_id vs exchange event sequence semantics"
+  price: "PENDING — existing L0 price contract must be verified for trade stream"
+  quantity: "PENDING — trade quantity scaling/representation is not globally specified"
+  exchange_tsc: "PENDING — MARKET-DATA-001 names E as timestamp_field; Binance trade T is also present"
+  ingestion_tsc: "CLOCK_MONOTONIC_RAW at frame receipt"
+
+open_contract_decisions:
+  instrument_mapping: >
+    The current S5 Binance operational qualification is explicitly scoped to
+    BTCUSDT, and the existing L0 normalizer currently emits instrument_id=0.
+    No authoritative multi-symbol instrument registry was found in the
+    repository. Therefore BTCUSDT -> instrument_id 0 is proposed only as a
+    single-instrument implementation mapping. It MUST NOT be generalized to
+    other symbols without an explicit instrument-registry contract.
+  quantity_scale: >
+    Binance trade quantity is decimal base-asset quantity. For BTCUSDT, live
+    @trade sampling produced 378 observed trade messages across two sampling
+    runs, and every observed q value satisfied Decimal(q) * 100000 == integer.
+    This supports 1e5 as a BTCUSDT-scoped proposed encoding, but does not establish
+    a universal quantity scale for all symbols or all future trade messages.
+  timestamp_semantics: >
+    MARKET-DATA-001 declares timestamp_field "E", while Binance trade messages
+    also provide trade time "T". The RawMarketEvent exchange_tsc mapping MUST
+    explicitly choose and document one semantic before implementation.
+  sequence_semantics: >
+    MARKET-DATA-001 declares sequence_field "u" for depth. Binance trade events
+    have a trade identifier "t" instead. Trade ordering/replay semantics MUST
+    explicitly define which identifier populates RawMarketEvent::sequence_num.
+  trade_side_semantics: >
+    Existing Side_BUY/Side_SELL semantics in NEW/CANCEL represent bid/ask book
+    side. Reusing the same field for trade aggressor direction is a semantic
+    extension and MUST be explicitly accepted before production use.
+
+binance_verified_contract:
+  source: "Binance Spot WebSocket Market Streams — Trade Streams"
+  stream: "<symbol>@trade"
+  fields:
+    e: "trade"
+    E: "event time / server push time"
+    s: "symbol"
+    t: "trade ID"
+    p: "price"
+    q: "quantity"
+    T: "trade time"
+    m: "buyer is the market maker"
+    M: "ignore"
+  proposed_normalization:
+    sequence_num: "t"
+    exchange_tsc: "T * 1,000,000"
+    side:
+      m_true: "SELL aggressor"
+      m_false: "BUY aggressor"
+
+decision_status:
+  transport: "PROPOSED_SEPARATE_L0_TRADE_RING"
+  instrument_mapping: "PROPOSED_BTCUSDT_TO_0_SINGLE_INSTRUMENT"
+  quantity_scale: "PENDING"
+  timestamp_semantics: "PROPOSED_TRADE_TIME_T"
+  sequence_semantics: "PROPOSED_TRADE_ID_T"
+  trade_side_semantics: "PROPOSED_MAKER_FLAG_M"
+
+event_abi:
+  decision: "PROPOSED_REUSE_EXISTING_RAW_MARKET_EVENT"
+  rationale: >
+    RawMarketEvent already declares EventType::TRADE and contains fields
+    sufficient to carry a normalized individual trade without changing the
+    64-byte canonical event ABI. A new trade-specific event struct is therefore
+    unnecessary at this stage.
+  schema_change: "NONE_PROPOSED"
+  size_bytes: 64
+  semantic_requirements:
+    event_type: "TRADE"
+    side: "PENDING — aggressor direction semantics"
+    sequence_num: "PENDING — trade identity/order semantics"
+    price: "PENDING — verified fixed-point contract"
+    quantity: "PENDING — verified trade quantity representation"
+    exchange_tsc: "PENDING — verified timestamp semantic"
+    instrument_id: "PENDING — symbol registry mapping"
+  replay_requirement: >
+    The normalized trade must be fully reconstructible from the canonical
+    RawMarketEvent persisted in Tier-0; no hidden trade metadata may be required
+    for VPIN replay.
+
+transport:
+  requirement: >
+    Trade events MUST remain outside the existing L0→L1 market-events path.
+    The accepted implementation must provide an explicit transport boundary
+    for trade events before VPIN is production-connected.
+  alternatives_to_review:
+    - "separate dedicated L0 trade ring consumed by L2"
+    - "shared L0 market-events ring with explicit L1 TRADE filtering plus L1→L2 trade forwarding"
+  decision: "PROPOSED_SEPARATE_L0_TRADE_RING"
+  rationale: >
+    A dedicated trade transport preserves the existing S2 contract in which
+    /dev/shm/egbos_market_events is the L0→L1 LOB path. It prevents a TRADE
+    event from reaching L1's book mutation logic, isolates trade-feed
+    backpressure from depth-feed processing, and gives L2 direct access to
+    executed-trade events for a future VPIN implementation.
+  slot_abi: "PENDING"
+  shm_path: "PENDING"
+  capacity: "PENDING"
+  ownership: "PENDING — L0 producer, L2 consumer proposed"
+
+governance_constraints:
+  - "No VPIN mathematics may be implemented under this RFC."
+  - "No live-capital gate is changed by this RFC."
+  - "No change to existing L1 book-side semantics is permitted."
+  - "Trade direction must be recoverable from durable/replayable event data."
+  - "LOCAL_SYNTHETIC and TESTNET data remain non-production evidence."
+  - "Any ABI change requires explicit governance approval and regenerated proof artifacts."
+
+verification:
+  required:
+    - "unit tests for valid @trade parsing"
+    - "malformed/truncated trade-frame rejection tests"
+    - "byte-level normalization fixture"
+    - "direction parity fixture for m=true/false"
+    - "replay determinism proof"
+    - "zero-allocation hot-path audit"
+    - "L1 regression proving TRADE cannot mutate the LOB"
+  vpIN_prerequisite: >
+    RFC-004 acceptance and successful L0 verification are prerequisites for
+    any future VPIN mathematical implementation.
+
+impact_assessment:
+  claims_invalidated: []
+  claims_requiring_re_proof: []
+  slices_reopened: []
+  capital_gates_affected: []
+
+engineering_findings:
+  note: >
+    The following findings were established from direct terminal inspection
+    of the repository (git history, source files, static_asserts, comments)
+    during continued RFC-004 analysis. They resolve some of the open
+    transport questions with evidence but do NOT change any decision_status
+    or transport.decision value from PROPOSED to ACCEPTED. Acceptance
+    remains a governance action, not an engineering conclusion.
+
+  market_data_001_countersignature_inconsistency:
+    finding: >
+      governance/MARKET-DATA-001.yaml has status COUNTERSIGNED with
+      signer "founder", which IS present in git history (commits
+      61a958f "chore(gov): sign MARKET-DATA-001" and acffd267
+      "chore(gov): finalize MARKET-DATA-001 authorization", both dated
+      2026-08-25). However, the countersignature block's own "date" field
+      reads 2026-08-19 (6 days before the actual signing commits), and its
+      "git_commit_sha" field (26633896424d1ceda3818087ac50a379bd2e8778)
+      points to an unrelated commit ("L1 remediation: deterministic
+      collision resolution", 2026-08-17) that does not touch
+      MARKET-DATA-001.yaml at all.
+    conclusion: >
+      The countersignature itself (signer identity, existence of a real
+      signing commit) is genuine and not fabricated. The date and
+      git_commit_sha metadata fields inside the countersignature block are
+      incorrect/stale, most likely left over from an earlier draft/template
+      and never updated at signing time. This is a pre-existing metadata
+      defect in MARKET-DATA-001.yaml, not introduced by RFC-004, and not
+      grounds to distrust the document's authority to name the @trade
+      stream -- but it should be corrected by whoever owns that document.
+    recommendation: "Flag to document owner; out of scope for RFC-004 to silently fix."
+
+  tier0_append_is_size_agnostic:
+    finding: >
+      engine/l0/ingestor.cpp FeedIngestor::tier0_append(const iovec* iov,
+      int iovcnt, uint64_t now_ns) computes expected size as the sum of
+      iov[].iov_len at call time and compares it against the writev()
+      return value. No 128-byte constant appears anywhere inside
+      tier0_append() or tier0_flush_if_due(). The 128-byte size currently
+      written is entirely a property of the caller (ingestor.cpp passes
+      iov[0].iov_len = sizeof(slot.data) where slot is a MarketEventSlot).
+    conclusion: >
+      Question 1 (can the existing 128B Tier-0 append be reused): YES at
+      the tier0_append() mechanism level -- it is generic and would accept
+      a differently-sized record (e.g. a 64-byte RawMarketEvent-only trade
+      record) without modification to tier0_append() itself.
+
+  no_tier0_replay_reader_found:
+    finding: >
+      Repository-wide search for a Tier-0 file reader (pread/fread/ifstream
+      against the tier0 file, outside of engine/core/wal_writer.h which is
+      the UNRELATED L3 position-state WAL, not Tier-0) found no component
+      that reads Tier-0 records back for replay. engine/tests/
+      test_cli_sync_replay.cpp contains zero references to "128",
+      "MarketEventSlot", or "sizeof". scripts/s5_live_binance_qualification.cpp
+      uses generic fread() into an arbitrary chunk buffer, not fixed-size
+      record parsing.
+    conclusion: >
+      Question 6 (does Tier-0 replay require 128B records): NO SUPPORTING
+      EVIDENCE was found either way. No Tier-0 replay reader currently
+      exists in this repository to have any size requirement at all. This
+      question cannot be answered from current evidence; it is not "128B
+      required" and it is not "128B not required" -- the mechanism itself
+      is unbuilt. Any claim that Tier-0 replay mandates 128B records would
+      be unsupported invention and must not be asserted.
+
+  wal_writer_is_unrelated_to_tier0:
+    finding: >
+      engine/core/wal_writer.h (WalWriter class, AD-012, CLAIM-WAL-001) is
+      used exclusively by engine/core/position_engine.cpp/.h and their
+      tests. grep across engine/l0/ found zero references to WalWriter.
+      This is a fully separate durability system (L3 position state) from
+      the L0 Tier-0 mechanism (raw writev in ingestor.cpp). The two must
+      not be conflated when reasoning about trade-event durability.
+
+  slot_frame_metadata_is_depth_specific_confirmed:
+    finding: >
+      engine/core/shm_layout.h's own comment on SlotFrameMetadata states
+      verbatim: "This struct is NOT part of the FlatBuffers schema. It is
+      EGBOS-internal slot metadata only and must not be persisted to Tier-0
+      in isolation." Its fields (first_update_id, final_update_id,
+      frame_level_index) are explicitly documented as carrying Binance
+      @depth U/u frame-continuity data; frame_level_index is marked
+      "diagnostic only; not used for gap detection" and is meaningless for
+      a trade event, which has no "frame".
+    conclusion: >
+      Question 8 confirmed: SlotFrameMetadata (bytes 64-127 of
+      MarketEventSlot) is depth-specific by the code's own documentation.
+      Question 2 follows from this: reusing MarketEventSlot as-is for a
+      trade ring is NOT viable without either (a) leaving bytes 64-127
+      meaningless/zeroed for trade slots (wasteful and semantically
+      misleading -- the field names would lie about their content), or
+      (b) defining a new, trade-specific upper-64-byte layout, which is
+      itself a new ABI decision requiring explicit governance sign-off, not
+      an assumption RFC-004 can make silently.
+
+  shm_init_all_has_no_extension_point:
+    finding: >
+      engine/core/shm_layout.h shm_init_all() opens exactly eight
+      hardcoded, individually-named SHM regions (market_events,
+      lob_snapshots, feature_vector, position_state, risk_limits,
+      exec_commands, regime_signal, governance_flags) via eight explicit
+      open_shm_region() calls. ShmRegionPointers is a fixed struct with one
+      named field per region. There is no loop, registry, or dynamic
+      region list -- no extension point exists.
+    conclusion: >
+      Question 3 confirmed: adding any new SHM-backed trade ring, under
+      any transport design, REQUIRES modifying shm_layout.h directly (new
+      path/size constants, a new ShmRegionPointers field, a new
+      open_shm_region() call, and an updated kTotalShmBytes total). This is
+      not an implementation detail internal to RFC-004's chosen transport
+      option -- it is itself a change to a governance-relevant ABI file
+      (shm_layout.h backs multiple existing claims, e.g. CLAIM-LOB-001) and
+      would need its own explicit review, separate from and prior to
+      RFC-004's own acceptance. This RFC's transport.decision therefore
+      cannot be implemented as currently scoped without that separate,
+      additional governance step -- this is recorded here as a blocking
+      dependency, not resolved by this RFC.
+
+  capacity_remains_unsupported:
+    finding: >
+      No throughput measurement, load test, or historical trade-rate data
+      for the @trade stream was found anywhere in this repository.
+    conclusion: >
+      Question 4 confirmed: transport.capacity correctly remains PENDING.
+      No number should be proposed without empirical measurement.
+
+  ownership_thread_model_has_real_precedent:
+    finding: >
+      engine/l0/binance_feed_listener.h exposes a blocking BinanceFeedListener
+      ::run_loop() plus request_stop() for cooperative shutdown. The existing
+      operational harness (scripts/s5_live_binance_qualification.cpp) runs
+      this loop on a dedicated std::thread, decoupled from the main thread,
+      and joins it after request_stop(). No other threading pattern for an
+      L0 feed listener was found in the repository.
+    conclusion: >
+      Question 5 (ownership: dedicated L0 producer thread, L2 consumer):
+      the "dedicated per-feed thread for L0" pattern named in
+      docs/S2_INSTITUTIONAL_SPEC.md has a real, working precedent in this
+      exact run_loop()/request_stop()/join() shape, not just a documentation
+      claim. A trade-feed listener could follow the identical shape (new
+      class or a reconfigured BinanceFeedListener subscribing to <symbol>@trade
+      instead of <symbol>@depth), run on its own dedicated thread, producing
+      into whatever trade transport is eventually accepted. This is offered
+      as supporting precedent only -- it does not by itself decide
+      transport.ownership, which remains PENDING pending the shm_layout.h
+      change discussed above.
+
+  raw_market_event_field_capacity_check:
+    finding: >
+      RawMarketEvent::quantity is uint32_t. binance_json_normalizer.cpp
+      currently casts a scaled (kL0PriceScale=100000) int64_t quantity value
+      directly to uint32_t with only a "clamp negative to 0" guard
+      (static_cast<uint32_t>(qty_val > 0 ? qty_val : 0)) -- there is no
+      overflow check against UINT32_MAX. This existing behavior predates
+      RFC-004 and affects the depth path today; it is not introduced by
+      trade-event handling, but it directly bounds question 7 (is
+      RawMarketEvent sufficient without a schema change): the maximum
+      representable scaled quantity is UINT32_MAX / 100000 = 42949.67,
+      i.e. quantities at or above ~42,949 base-asset units (e.g. BTC) would
+      silently truncate/wrap under the current cast. For BTCUSDT trade
+      sizes this is not a practical concern (typical trade sizes are far
+      smaller), but it is a real, pre-existing correctness gap that is not
+      fixed by this RFC and should not be silently inherited by the trade
+      path without an explicit decision to accept, or fix, it.
+    conclusion: >
+      Question 7: RawMarketEvent's 64-byte layout has enough named fields
+      (event_type, side, quantity, sequence_num, ingestion_tsc,
+      exchange_tsc, price, instrument_id) to carry a normalized trade
+      without a schemas/market_event.fbs change -- consistent with
+      event_abi.decision (PROPOSED_REUSE_EXISTING_RAW_MARKET_EVENT).
+      However this finding documents a real existing quantity-overflow gap
+      in the uint32_t cast that any trade-quantity implementation will
+      inherit unless explicitly addressed; it is not a new problem
+      introduced by trade support, but it should not be silently
+      carried forward either. This is recorded as a pre-existing gap,
+      not a blocker specific to RFC-004.
+
+approval_authority: "CTO + Governance Board"
+approval_record: "PENDING"
+supersedes: null
