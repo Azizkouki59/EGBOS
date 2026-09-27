@@ -132,6 +132,49 @@ TEST(NormalizerTest, TrailingZeroPaddingIsAccepted) {
     EXPECT_EQ(seen.count, 1);
 }
 
+// RFC-004 engineering_findings.raw_market_event_field_capacity_check:
+// RawMarketEvent::quantity is uint32_t. parse_fixed_point validates against
+// int64_t overflow only, so a scaled quantity that fits in int64_t can still
+// exceed UINT32_MAX. Max representable scaled quantity is
+// UINT32_MAX / kL0PriceScale (100000) = 42949.67295 base-asset units.
+// These two tests pin the exact boundary: 42949 must be accepted (scaled
+// value 4294900000 <= UINT32_MAX), 42950 must be explicitly rejected as
+// OVERFLOW (scaled value 4295000000 > UINT32_MAX), not silently truncated.
+TEST(NormalizerTest, QuantityAtUint32BoundaryIsAccepted) {
+    const std::string json =
+        R"({"e":"depthUpdate","U":1,"u":1,"b":[["1.0","42949"]],"a":[]})";
+
+    NormalizerSeen seen{};
+
+    const auto status = egbos::l0::normalize_binance_depth(
+        reinterpret_cast<const uint8_t*>(json.data()),
+        json.size(),
+        12345,
+        collect_normalized,
+        &seen);
+
+    ASSERT_EQ(status, egbos::l0::L0ParseStatus::OK);
+    EXPECT_EQ(seen.count, 1);
+}
+
+TEST(NormalizerTest, QuantityExceedingUint32IsRejectedNotTruncated) {
+    const std::string json =
+        R"({"e":"depthUpdate","U":1,"u":1,"b":[["1.0","42950"]],"a":[]})";
+
+    NormalizerSeen seen{};
+
+    const auto status = egbos::l0::normalize_binance_depth(
+        reinterpret_cast<const uint8_t*>(json.data()),
+        json.size(),
+        12345,
+        collect_normalized,
+        &seen);
+
+    EXPECT_EQ(status, egbos::l0::L0ParseStatus::OVERFLOW);
+    // No level should have been forwarded to the callback for a rejected event.
+    EXPECT_EQ(seen.count, 0);
+}
+
 
 TEST_F(GapDetectionTest, PassthroughAllPayloads_S2REQ002NotYetImplemented) {
     egbos::l0::FeedIngestor ingestor(&market_events, &gov_flags, tier0_fd);

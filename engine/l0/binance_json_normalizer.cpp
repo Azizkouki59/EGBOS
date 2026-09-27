@@ -244,6 +244,20 @@ L0ParseStatus parse_side_array(
         r = parse_fixed_point(qty_str, qty_len, qty_val);
         if (r != L0ParseStatus::OK) return r;
 
+        // RawMarketEvent::quantity is uint32_t, but parse_fixed_point returns
+        // an int64_t validated only against int64_t overflow (see
+        // parse_fixed_point above). A value that fits in int64_t can still
+        // exceed UINT32_MAX (max representable scaled quantity is
+        // UINT32_MAX / kL0PriceScale = 42949.67 base-asset units). Silently
+        // truncating via static_cast would wrap the value and misrepresent
+        // the level's true quantity. Reject explicitly instead -- found and
+        // documented in RFC-004 (engineering_findings.
+        // raw_market_event_field_capacity_check); this guard applies to the
+        // existing depth path and is not specific to trade events.
+        if (qty_val > static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
+            return L0ParseStatus::OVERFLOW;
+        }
+
         // EventType: CANCEL when qty==0 (Binance level removal), NEW otherwise.
         egbos::events::EventType ev_type = (qty_val == 0)
             ? egbos::events::EventType_CANCEL
