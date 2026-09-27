@@ -1,11 +1,38 @@
 rfc_id:          "RFC-004"
 title:           "L0 Trade Feed Input Contract for VPIN"
-status:          "proposed"
-author:          "assistant-guided-session"
+status:          "open"
+author:          "founder"
 date_opened:     "2026-09-26T00:00:00Z"
 date_closed:     null
-change_type:     "market_data_feed | transport_contract | feature_input"
-artifacts_changed: []
+change_type:     "claim_scope"
+artifacts_changed:
+  - artifact_id: "CLAIM-L0-001"
+    change_description: >
+      Extend the verified L0 normalization and Tier-0 ordering scope to include
+      the newly proposed Binance <symbol>@trade input path while preserving the
+      existing RawMarketEvent ABI and Tier-0-before-SPSC ordering invariant.
+
+alternatives_considered:
+  - alternative: "Shared existing L0->L1 market-events ring with TRADE filtering"
+    rejection_reason: >
+      Current L1 processing path performs LOB mutation on received events;
+      sending TRADE into that boundary would require an additional explicit
+      rejection/filtering contract and regression proof.
+  - alternative: "Separate dedicated L0 trade ring consumed by L2"
+    rejection_reason: >
+      Preferred transport proposal for this RFC, but requires a new SHM ABI
+      and separate governance review before implementation.
+
+impact_assessment:
+  claims_invalidated: []
+  claims_requiring_re_proof:
+    - "CLAIM-L0-001"
+  slices_reopened:
+    - "S2"
+  capital_gates_affected: []
+  note: >
+    No live-capital gate is changed by RFC-004. Any accepted implementation
+    must re-run the affected S2 acceptance verification before closure.
 
 rationale: >
   RFC-003 explicitly deferred VPIN because EGBOS had no executed-trade input.
@@ -172,12 +199,6 @@ verification:
     RFC-004 acceptance and successful L0 verification are prerequisites for
     any future VPIN mathematical implementation.
 
-impact_assessment:
-  claims_invalidated: []
-  claims_requiring_re_proof: []
-  slices_reopened: []
-  capital_gates_affected: []
-
 engineering_findings:
   note: >
     The following findings were established from direct terminal inspection
@@ -299,11 +320,17 @@ engineering_findings:
 
   capacity_remains_unsupported:
     finding: >
-      No throughput measurement, load test, or historical trade-rate data
-      for the @trade stream was found anywhere in this repository.
+      A direct live Binance @trade sampling run has now provided an empirical
+      traffic envelope: 1144 messages over 117.247 seconds, average 9.749
+      messages/sec, p50 inter-arrival 0.004 ms, p99 1387.381 ms, maximum
+      inter-arrival 2759.526 ms, maximum 168 messages/100ms, and maximum
+      380 messages/1s. This is observed traffic evidence only; it does not
+      define a required consumer stall duration or backlog budget.
     conclusion: >
-      Question 4 confirmed: transport.capacity correctly remains PENDING.
-      No number should be proposed without empirical measurement.
+      Question 4 remains intentionally PENDING. The live traffic envelope
+      supports capacity analysis, but no ring size may be selected until the
+      required consumer-stall/backlog budget and overflow observability
+      criteria are explicitly defined and accepted.
 
   ownership_thread_model_has_real_precedent:
     finding: >
