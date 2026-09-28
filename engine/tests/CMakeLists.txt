@@ -132,6 +132,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_compile_features(test_zero_order_path PRIVATE cxx_std_20)
   gtest_discover_tests(test_zero_order_path)
 
+  # RFC-004: Binance @trade L0 normalization tests.
+  add_executable(test_binance_trade_normalizer test_binance_trade_normalizer.cpp ../l0/binance_json_normalizer.cpp)
+  target_link_libraries(test_binance_trade_normalizer PRIVATE engine_core GTest::gtest GTest::gtest_main flatbuffers)
+  target_compile_features(test_binance_trade_normalizer PRIVATE cxx_std_20)
+  gtest_discover_tests(test_binance_trade_normalizer)
+
   # S5-REQ-002: Timestamp injection unit tests.
   # Classification: LOCAL_SYNTHETIC
   add_executable(test_timestamp_injection test_timestamp_injection.cpp ../l0/ingestor.cpp ../l0/binance_json_normalizer.cpp)

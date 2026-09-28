@@ -531,4 +531,290 @@ L0ParseStatus normalize_binance_depth(
 
     return L0ParseStatus::OK;
 }
+
+namespace {
+
+L0ParseStatus parse_trade_bool(
+    const uint8_t*& p,
+    const uint8_t* end,
+    bool& out) noexcept
+{
+    skip_ws(p, end);
+
+    if (static_cast<std::size_t>(end - p) >= 4 &&
+        std::memcmp(p, "true", 4) == 0) {
+        p += 4;
+        out = true;
+        return L0ParseStatus::OK;
+    }
+
+    if (static_cast<std::size_t>(end - p) >= 5 &&
+        std::memcmp(p, "false", 5) == 0) {
+        p += 5;
+        out = false;
+        return L0ParseStatus::OK;
+    }
+
+    return L0ParseStatus::NUMERIC_PARSE_FAILURE;
+}
+
+L0ParseStatus parse_trade_uint64(
+    const uint8_t*& p,
+    const uint8_t* end,
+    uint64_t& out) noexcept
+{
+    const uint8_t* start = p;
+
+    while (p < end &&
+           *p != ',' &&
+           *p != '}' &&
+           *p != ' ' &&
+           *p != '\n' &&
+           *p != '\r' &&
+           *p != '\t') {
+        ++p;
+    }
+
+    if (p == start)
+        return L0ParseStatus::NUMERIC_PARSE_FAILURE;
+
+    return parse_uint64(start, p, out);
+}
+
+} // anonymous namespace
+
+L0ParseStatus normalize_binance_trade(
+    const uint8_t*       json,
+    std::size_t          length,
+    uint64_t             ingestion_tsc,
+    L0TradeEventCallback cb,
+    void*                user_ctx) noexcept
+{
+    if (!json || length == 0)
+        return L0ParseStatus::TRUNCATED;
+
+    const uint8_t* p = json;
+    const uint8_t* end = json + length;
+
+    skip_ws(p, end);
+    if (p == end || *p != '{')
+        return L0ParseStatus::TRUNCATED;
+    ++p;
+
+    bool have_e = false;
+    bool have_s = false;
+    const uint8_t* symbol_start = nullptr;
+    std::size_t symbol_len = 0;
+    bool have_t = false;
+    bool have_p = false;
+    bool have_q = false;
+    bool have_T = false;
+    bool have_m = false;
+
+    uint64_t trade_id = 0;
+    uint64_t trade_time_ms = 0;
+    int64_t price_val = 0;
+    int64_t qty_val = 0;
+    bool buyer_is_maker = false;
+
+    while (p < end) {
+        skip_ws(p, end);
+
+        if (p == end)
+            return L0ParseStatus::TRUNCATED;
+
+        if (*p == '}') {
+            ++p;
+            break;
+        }
+
+        if (*p != '"')
+            return L0ParseStatus::TRUNCATED;
+        ++p;
+
+        const uint8_t* key_start = p;
+        p = find_quote(p, end);
+        if (!p)
+            return L0ParseStatus::TRUNCATED;
+
+        const std::size_t key_len =
+            static_cast<std::size_t>(p - key_start);
+        ++p;
+
+        skip_ws(p, end);
+        if (p == end || *p != ':')
+            return L0ParseStatus::TRUNCATED;
+        ++p;
+        skip_ws(p, end);
+
+        if (key_len == 1 && key_start[0] == 'e') {
+            const uint8_t* value_start;
+            std::size_t value_len;
+
+            L0ParseStatus r =
+                extract_string(p, end, value_start, value_len);
+            if (r != L0ParseStatus::OK)
+                return r;
+
+            if (value_len != 5 ||
+                std::memcmp(value_start, "trade", 5) != 0) {
+                return L0ParseStatus::WRONG_EVENT_TYPE;
+            }
+
+            have_e = true;
+
+        } else if (key_len == 1 && key_start[0] == 's') {
+            const uint8_t* value_start;
+            std::size_t value_len;
+
+            L0ParseStatus r =
+                extract_string(p, end, value_start, value_len);
+            if (r != L0ParseStatus::OK)
+                return r;
+
+            if (value_len == 0)
+                return L0ParseStatus::MISSING_FIELD;
+
+            symbol_start = value_start;
+            symbol_len = value_len;
+            have_s = true;
+
+        } else if (key_len == 1 && key_start[0] == 't') {
+            L0ParseStatus r =
+                parse_trade_uint64(p, end, trade_id);
+            if (r != L0ParseStatus::OK)
+                return r;
+
+            have_t = true;
+
+        } else if (key_len == 1 && key_start[0] == 'p') {
+            const uint8_t* value_start;
+            std::size_t value_len;
+
+            L0ParseStatus r =
+                extract_string(p, end, value_start, value_len);
+            if (r != L0ParseStatus::OK)
+                return r;
+
+            r = parse_fixed_point(value_start, value_len, price_val);
+            if (r != L0ParseStatus::OK)
+                return r;
+
+            if (price_val <= 0)
+                return L0ParseStatus::NUMERIC_PARSE_FAILURE;
+
+            have_p = true;
+
+        } else if (key_len == 1 && key_start[0] == 'q') {
+            const uint8_t* value_start;
+            std::size_t value_len;
+
+            L0ParseStatus r =
+                extract_string(p, end, value_start, value_len);
+            if (r != L0ParseStatus::OK)
+                return r;
+
+            r = parse_fixed_point(value_start, value_len, qty_val);
+            if (r != L0ParseStatus::OK)
+                return r;
+
+            if (qty_val <= 0)
+                return L0ParseStatus::NUMERIC_PARSE_FAILURE;
+
+            if (qty_val >
+                static_cast<int64_t>(
+                    std::numeric_limits<uint32_t>::max())) {
+                return L0ParseStatus::OVERFLOW;
+            }
+
+            have_q = true;
+
+        } else if (key_len == 1 && key_start[0] == 'T') {
+            L0ParseStatus r =
+                parse_trade_uint64(p, end, trade_time_ms);
+            if (r != L0ParseStatus::OK)
+                return r;
+
+            have_T = true;
+
+        } else if (key_len == 1 && key_start[0] == 'm') {
+            L0ParseStatus r =
+                parse_trade_bool(p, end, buyer_is_maker);
+            if (r != L0ParseStatus::OK)
+                return r;
+
+            have_m = true;
+
+        } else {
+            L0ParseStatus r = skip_value(p, end);
+            if (r != L0ParseStatus::OK)
+                return r;
+        }
+
+        skip_ws(p, end);
+
+        if (p < end && *p == ',') {
+            ++p;
+        } else if (p < end && *p == '}') {
+            ++p;
+            break;
+        } else {
+            return L0ParseStatus::TRUNCATED;
+        }
+    }
+
+    skip_ws(p, end);
+    if (p != end)
+        return L0ParseStatus::TRUNCATED;
+
+    if (!have_e || !have_s || !have_t ||
+        !have_p || !have_q || !have_T || !have_m) {
+        return L0ParseStatus::MISSING_FIELD;
+    }
+
+    // RFC-004 current production scope is explicitly BTCUSDT -> instrument 0.
+    // No authoritative symbol registry exists yet, so silently accepting
+    // another symbol and assigning instrument_id=0 would misclassify it.
+    if (symbol_len != 7 ||
+        std::memcmp(symbol_start, "BTCUSDT", 7) != 0) {
+        return L0ParseStatus::MISSING_FIELD;
+    }
+
+    constexpr uint64_t kMsToNs = 1'000'000ULL;
+
+    if (trade_time_ms >
+        std::numeric_limits<uint64_t>::max() / kMsToNs) {
+        return L0ParseStatus::OVERFLOW;
+    }
+
+    const uint64_t exchange_tsc =
+        trade_time_ms * kMsToNs;
+
+    const egbos::events::Side side =
+        buyer_is_maker
+            ? egbos::events::Side_SELL
+            : egbos::events::Side_BUY;
+
+    const egbos::events::RawMarketEvent event(
+        /*schema_version=*/ 1,
+        /*event_type=*/      egbos::events::EventType_TRADE,
+        /*side=*/            side,
+        /*feed_id=*/         0,
+        /*exchange_id=*/     0,
+        /*instrument_id=*/   0,
+        /*quantity=*/        static_cast<uint32_t>(qty_val),
+        /*sequence_num=*/    trade_id,
+        /*ingestion_tsc=*/   ingestion_tsc,
+        /*exchange_tsc=*/    exchange_tsc,
+        /*price=*/           price_val,
+        /*tier0_offset=*/    0,
+        /*checksum=*/        0);
+
+    if (!cb)
+        return L0ParseStatus::OK;
+
+    cb(event, user_ctx);
+    return L0ParseStatus::OK;
+}
+
 } // namespace egbos::l0

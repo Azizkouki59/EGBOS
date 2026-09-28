@@ -87,4 +87,28 @@ L0ParseStatus normalize_binance_depth(
     L0EventCallback cb,
     void*           user_ctx) noexcept;
 
+// ── Trade callback ────────────────────────────────────────────────────────────
+using L0TradeEventCallback = bool (*)(
+    const egbos::events::RawMarketEvent& event,
+    void* user_ctx) noexcept;
+
+// ── normalize_binance_trade ──────────────────────────────────────────────────
+// Parse one Binance <symbol>@trade JSON frame without dynamic allocation.
+// Required fields: e, s, t, p, q, T, m.
+//
+// Mapping:
+//   t -> sequence_num
+//   p -> price (10^5 fixed point)
+//   q -> quantity (uint32_t, overflow rejected)
+//   T -> exchange_tsc (milliseconds converted to nanoseconds)
+//   ingestion_tsc -> ingestion_tsc
+//   m=true  -> Side_SELL
+//   m=false -> Side_BUY
+L0ParseStatus normalize_binance_trade(
+    const uint8_t*       json,
+    std::size_t          length,
+    uint64_t             ingestion_tsc,
+    L0TradeEventCallback cb,
+    void*                user_ctx) noexcept;
+
 } // namespace egbos::l0
