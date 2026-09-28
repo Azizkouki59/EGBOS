@@ -130,3 +130,17 @@ Ranked by risk to system correctness:
    - **Affected Files**: `engine/tests/CMakeLists.txt`, `engine/tests/test_binance_frame_callback.cpp`
    - **Acceptance Criteria**: Test is added to `CMakeLists.txt` via `add_executable` and `gtest_discover_tests`, and passes cleanly.
    - **Risk**: Low (Missing coverage).
+
+## Deferred integration notes (found during S6 code review, 2026-09-28)
+- L2 FeatureEngine writes a valid, mask=0 FeatureVector; no L3 consumer exists
+  yet. When L3 is built, confirm it checks validity_mask_lo64 per-bit before
+  reading any feature payload byte — do not assume zero payload means zero
+  feature value.
+- core::GovernanceFlags (governance_interface.h, used by PositionEngine/
+  RiskEnforcer) and shm::GovernanceFlags (shm_layout.h, used by ingestor/
+  l1_consumer/execution_router) are two independently-evolved structs with
+  overlapping field names but different layouts. Neither PositionEngine nor
+  RiskEnforcer is constructed in any production path yet (test-only). Before
+  wiring L3/L4 into the real engine loop, resolve whether these should be one
+  shared SHM-backed type or an explicit bridge — do not assume they're
+  interchangeable.
