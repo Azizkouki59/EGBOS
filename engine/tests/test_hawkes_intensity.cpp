@@ -1,7 +1,7 @@
 // engine/tests/test_hawkes_intensity.cpp
 // EGBOS — Unit tests for engine/l2/hawkes_intensity.h
 //
-// Governance: governance/claims/CLAIM-L2-HAWKES-001.yaml (status: pending)
+// Governance: governance/rfcs/drafts/CLAIM-L2-HAWKES-001.yaml (status: pending)
 //
 // These tests use independently-computed expected values (worked by hand
 // from the exponential-kernel recursive-update formula documented in

@@ -1,7 +1,7 @@
 // engine/l2/hawkes_intensity.h
 // EGBOS — L2 Hawkes self-exciting intensity (exponential kernel)
 //
-// Governance   : governance/claims/CLAIM-L2-HAWKES-001.yaml (status: pending)
+// Governance   : governance/rfcs/drafts/CLAIM-L2-HAWKES-001.yaml (status: pending)
 // Scoping RFC  : governance/rfcs/RFC-003-L2-HAWKES-VPIN-FEATURE-SCOPING.yaml
 //
 // STATUS: NOT EGBOS-APPROVED. This computes a value; it is not wired into
