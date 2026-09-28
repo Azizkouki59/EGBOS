@@ -71,9 +71,11 @@ target_link_libraries(engine_l1 PUBLIC engine_core)
 target_compile_features(engine_l1 PUBLIC cxx_std_20)
 
 # ── L2 Feature Engine transport boundary ──
-# Current scope: L1->L2 snapshot reader only.
-# Quantitative feature formulas/registry are intentionally out of scope until
-# the missing authoritative feature specification is resolved.
+# Current scope: L1→L2 snapshot reader + schema-versioned skeleton write.
+# Quantitative feature values are intentionally absent — no EGBOS feature
+# contract is active yet. See governance/rfcs/drafts/CLAIM-L2-HAWKES-001.yaml
+# (pending) and governance/rfcs/RFC-003-L2-HAWKES-VPIN-FEATURE-SCOPING.yaml
+# for the current state of blocked/proposed L2 feature decisions.
 add_library(engine_l2 STATIC l2/feature_engine.cpp)
 target_include_directories(engine_l2 PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
