@@ -149,7 +149,7 @@ static_assert(kLobSnapshotsRegionSize % kPageSize == 0,
     "kLobSnapshotsRegionSize must be page-aligned for mlock(2) compatibility");
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §3  /dev/shm/egbos_feature_vector  [L2 → L3]
+// §3  /dev/shm/egbos_feature_vector  [L2 → L3]  (legacy single-slot)
 //     256-byte FeatureVector, seqlock protected.
 //     Spec §6.2 (verbatim): "256B FeatureVector, seqlock protected"
 //     Spec §6.4: seqlock protocol is verbatim from HTML §C3.4.
@@ -166,6 +166,56 @@ static_assert(kFeatureVectorBytes > 0,
     "kFeatureVectorBytes must be non-zero (AD-006)");
 static_assert(kFeatureVectorRegionSize >= kFeatureVectorBytes + sizeof(uint64_t),
     "kFeatureVectorRegionSize must fit sequence counter + feature data");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §3b  /dev/shm/egbos_feature_slots  [L2 → L3]  (per-instrument production ABI)
+//
+// One FeatureSlot per instrument.  Architecture: per-instrument slot array
+// (Architecture A — one fixed slot per instrument, kMaxInstruments slots total).
+//
+// Per-slot layout (512 bytes, cache-line aligned):
+//   FeatureSlotHeader  (64 bytes, one cache line) — seqlock + metadata
+//   payload            (kFeatureSlotPayloadBytes = 448 bytes) — feature data
+//
+// Seqlock protocol (writer):
+//   1. sequence.fetch_add(1, seq_cst)   → sequence becomes odd (write in progress)
+//   2. write all metadata + payload
+//   3. atomic_thread_fence(seq_cst)
+//   4. sequence.fetch_add(1, seq_cst)   → sequence becomes even (consistent)
+//
+// Seqlock protocol (reader):
+//   1. seq1 = sequence.load(acquire)
+//   2. if seq1 == 0: unpublished — return false
+//   3. if seq1 & 1: torn write in progress — retry / return false
+//   4. copy header fields + payload
+//   5. atomic_thread_fence(acquire)
+//   6. seq2 = sequence.load(acquire)
+//   7. accept only if seq1 == seq2
+//
+// Each instrument's slot is independent — reading instrument i does NOT require
+// any synchronization with instrument j.  L3 may read any single slot atomically
+// without consulting other slots.
+//
+// Total region size = kMaxInstruments × kFeatureSlotBytes, page-rounded.
+// ─────────────────────────────────────────────────────────────────────────────
+inline constexpr std::size_t kFeatureSlotPayloadBytes = 448; // feature payload per instrument
+inline constexpr std::size_t kFeatureSlotBytes        = 512; // header(64) + payload(448)
+inline constexpr std::size_t kFeatureRegionSize       =
+    ((kMaxInstruments * kFeatureSlotBytes) + kPageSize - 1) & ~(kPageSize - 1);
+inline constexpr const char* kFeatureSlotsPath = "/egbos_feature_slots";
+
+static_assert(kFeatureSlotPayloadBytes > 0,
+    "kFeatureSlotPayloadBytes must be non-zero (AD-006)");
+static_assert(kFeatureSlotBytes == 64 + kFeatureSlotPayloadBytes,
+    "kFeatureSlotBytes must equal header(64) + payload");
+static_assert(kFeatureSlotBytes % 64 == 0,
+    "kFeatureSlotBytes must be a multiple of 64 (cache-line alignment)");
+static_assert(kFeatureRegionSize >= kMaxInstruments * kFeatureSlotBytes,
+    "kFeatureRegionSize must fit all instrument slots");
+static_assert(kFeatureRegionSize % kPageSize == 0,
+    "kFeatureRegionSize must be page-aligned for mlock(2)");
+
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // §4  /dev/shm/egbos_position_state  [L3 → L4]
@@ -438,6 +488,201 @@ struct FeatureVectorRegion {
 static_assert(sizeof(FeatureVectorRegion) <=  kFeatureVectorRegionSize,
     "FeatureVectorRegion does not fit in kFeatureVectorRegionSize");
 
+// ── FeatureSlotHeader ─────────────────────────────────────────────────────
+//
+// One cache line (64 bytes).  Sits at the base of every FeatureSlot.
+// Written atomically under the seqlock protocol documented in §3b above.
+//
+// Byte map (all values little-endian):
+//   [  0 –  7]  sequence       uint64_t  — seqlock counter (even=consistent)
+//   [  8 – 11]  instrument_id  uint32_t  — identifies which instrument owns this slot
+//   [ 12 ]      schema_version uint8_t   — reject if unrecognised
+//   [ 13 ]      reserved_a     uint8_t   — must be 0
+//   [ 14 – 15]  payload_count  uint16_t  — number of valid feature entries in payload
+//   [ 16 – 23]  source_seq     uint64_t  — L2 snapshot sequence that produced these features
+//   [ 24 – 31]  pub_ts_ns      uint64_t  — publication timestamp (CLOCK_MONOTONIC_RAW, ns)
+//   [ 32 – 39]  validity_mask  uint64_t  — bit N=1 ↔ feature N is valid
+//   [ 40 – 43]  payload_bytes  uint32_t  — meaningful bytes in payload (≤ kFeatureSlotPayloadBytes)
+//   [ 44 – 63]  reserved_b     uint8_t[20] — must be 0; forward-compatible growth
+//
+// Field ordering: largest-alignment types first to avoid implicit padding.
+struct FeatureSlotHeader {
+    std::atomic<uint64_t> sequence{0};   // bytes  0– 7: seqlock counter
+    uint32_t  instrument_id{0};          // bytes  8–11
+    uint8_t   schema_version{0};         // byte  12
+    uint8_t   reserved_a{0};             // byte  13: must be 0
+    uint16_t  payload_count{0};          // bytes 14–15: number of valid features
+    uint64_t  source_seq{0};             // bytes 16–23: L1 snapshot seq that triggered this
+    uint64_t  pub_ts_ns{0};             // bytes 24–31: CLOCK_MONOTONIC_RAW ns
+    uint64_t  validity_mask{0};          // bytes 32–39: bit N=1 → feature N valid
+    uint32_t  payload_bytes{0};          // bytes 40–43: meaningful bytes in payload
+    uint8_t   reserved_b[20]{};          // bytes 44–63: must be 0
+};
+
+static_assert(sizeof(FeatureSlotHeader) == 64,
+    "FeatureSlotHeader must be exactly 64 bytes (one cache line)");
+static_assert(std::is_standard_layout_v<FeatureSlotHeader>,
+    "FeatureSlotHeader must be standard-layout for safe SHM overlay");
+static_assert(alignof(FeatureSlotHeader) == alignof(std::atomic<uint64_t>),
+    "FeatureSlotHeader alignment must match atomic<uint64_t>");
+static_assert(offsetof(FeatureSlotHeader, instrument_id)  ==  8, "FeatureSlotHeader layout");
+static_assert(offsetof(FeatureSlotHeader, schema_version) == 12, "FeatureSlotHeader layout");
+static_assert(offsetof(FeatureSlotHeader, reserved_a)     == 13, "FeatureSlotHeader layout");
+static_assert(offsetof(FeatureSlotHeader, payload_count)  == 14, "FeatureSlotHeader layout");
+static_assert(offsetof(FeatureSlotHeader, source_seq)     == 16, "FeatureSlotHeader layout");
+static_assert(offsetof(FeatureSlotHeader, pub_ts_ns)      == 24, "FeatureSlotHeader layout");
+static_assert(offsetof(FeatureSlotHeader, validity_mask)  == 32, "FeatureSlotHeader layout");
+static_assert(offsetof(FeatureSlotHeader, payload_bytes)  == 40, "FeatureSlotHeader layout");
+static_assert(offsetof(FeatureSlotHeader, reserved_b)     == 44, "FeatureSlotHeader layout");
+
+// ── FeatureSlot ───────────────────────────────────────────────────────────
+//
+// One slot per instrument in FeatureRegion.  512 bytes, alignas(64).
+// Provides writer and non-spinning reader APIs.
+//
+// NO dynamic allocation.  NO pointers.  NO floats for prices/quantities.
+// Trivially copyable payload — safe to memcpy under seqlock.
+struct alignas(64) FeatureSlot {
+    FeatureSlotHeader header;
+    uint8_t payload[kFeatureSlotPayloadBytes]{};
+
+    // ── Writer API (L2 FeatureEngine — single writer per slot) ────────────
+    //
+    // publish() atomically commits header metadata and payload in one seqlock
+    // transaction.  Caller must be the sole writer for this slot.
+    // src_payload must point to at least src_payload_bytes bytes.
+    // src_payload_bytes must be <= kFeatureSlotPayloadBytes.
+    // Returns false if src_payload_bytes > kFeatureSlotPayloadBytes.
+    bool publish(
+        uint32_t  instrument_id,
+        uint8_t   schema_ver,
+        uint64_t  source_seq,
+        uint64_t  pub_ts_ns,
+        uint64_t  validity_mask,
+        uint16_t  feature_count,
+        const uint8_t* src_payload,
+        uint32_t  src_payload_bytes) noexcept
+    {
+        if (src_payload_bytes > kFeatureSlotPayloadBytes) {
+            return false;
+        }
+
+        // Phase 1: begin write — sequence becomes odd.
+        header.sequence.fetch_add(1, std::memory_order_seq_cst);
+
+        // Phase 2: write metadata (non-atomic fields — protected by seqlock).
+        header.instrument_id  = instrument_id;
+        header.schema_version = schema_ver;
+        header.reserved_a     = 0u;
+        header.payload_count  = feature_count;
+        header.source_seq     = source_seq;
+        header.pub_ts_ns      = pub_ts_ns;
+        header.validity_mask  = validity_mask;
+        header.payload_bytes  = src_payload_bytes;
+        std::memset(header.reserved_b, 0, sizeof(header.reserved_b));
+
+        // Phase 3: write payload.
+        if (src_payload && src_payload_bytes > 0) {
+            std::memcpy(payload, src_payload, src_payload_bytes);
+            if (src_payload_bytes < kFeatureSlotPayloadBytes) {
+                std::memset(payload + src_payload_bytes, 0,
+                            kFeatureSlotPayloadBytes - src_payload_bytes);
+            }
+        } else {
+            std::memset(payload, 0, kFeatureSlotPayloadBytes);
+        }
+
+        // Phase 4: full fence then mark write complete — sequence becomes even.
+        std::atomic_thread_fence(std::memory_order_seq_cst);
+        header.sequence.fetch_add(1, std::memory_order_seq_cst);
+        return true;
+    }
+
+    // ── Reader API (L3 DecisionEngine — non-spinning, returns false on torn) ──
+    //
+    // try_read() returns false if:
+    //   (a) sequence == 0  → slot was never published
+    //   (b) sequence & 1   → write in progress (torn) — caller decides to retry
+    //   (c) seq1 != seq2   → write occurred during copy (torn)
+    //   (d) out_schema_ver != expected_schema_ver  → caller must check
+    //
+    // On success (returns true), all out_* fields are populated from a
+    // consistent snapshot.  out_payload must point to kFeatureSlotPayloadBytes
+    // bytes of caller-owned storage.
+    [[nodiscard]] bool try_read(
+        uint32_t  expected_instrument_id,
+        uint32_t& out_instrument_id,
+        uint8_t&  out_schema_ver,
+        uint64_t& out_source_seq,
+        uint64_t& out_pub_ts_ns,
+        uint64_t& out_validity_mask,
+        uint16_t& out_payload_count,
+        uint32_t& out_payload_bytes,
+        uint8_t*  out_payload) const noexcept
+    {
+        const uint64_t seq1 = header.sequence.load(std::memory_order_acquire);
+
+        if (seq1 == 0u) return false;   // never published
+        if (seq1 & 1u)  return false;   // write in progress
+
+        // Copy non-atomic metadata.
+        out_instrument_id  = header.instrument_id;
+        out_schema_ver     = header.schema_version;
+        out_source_seq     = header.source_seq;
+        out_pub_ts_ns      = header.pub_ts_ns;
+        out_validity_mask  = header.validity_mask;
+        out_payload_count  = header.payload_count;
+        out_payload_bytes  = header.payload_bytes;
+        if (out_payload) {
+            std::memcpy(out_payload, payload, kFeatureSlotPayloadBytes);
+        }
+
+        std::atomic_thread_fence(std::memory_order_acquire);
+        const uint64_t seq2 = header.sequence.load(std::memory_order_acquire);
+
+        if (seq1 != seq2) return false; // torn — write happened during copy
+
+        if (out_payload_bytes > kFeatureSlotPayloadBytes) {
+            return false;
+        }
+
+        // Reject if instrument_id mismatch (detects slot aliasing bugs).
+        if (out_instrument_id != expected_instrument_id) return false;
+
+        return true;
+    }
+};
+
+static_assert(sizeof(FeatureSlot) == kFeatureSlotBytes,
+    "FeatureSlot must be exactly kFeatureSlotBytes (512) bytes");
+static_assert(alignof(FeatureSlot) == 64,
+    "FeatureSlot must be 64-byte aligned (cache-line)");
+static_assert(std::is_standard_layout_v<FeatureSlot>,
+    "FeatureSlot must be standard-layout for safe SHM overlay");
+static_assert(offsetof(FeatureSlot, payload) == 64,
+    "FeatureSlot::payload must start at byte 64 (after one header cache line)");
+
+// ── FeatureRegion ─────────────────────────────────────────────────────────
+//
+// Layout at /dev/shm/egbos_feature_slots.
+// One FeatureSlot per instrument.  L2 writes; L3 reads.
+// Each slot is independent — per-instrument reads require no cross-slot lock.
+//
+// Instrument count == kMaxInstruments (compile-time checked).
+// Total size: kMaxInstruments × kFeatureSlotBytes, page-rounded.
+struct FeatureRegion {
+    FeatureSlot slots[kMaxInstruments];
+};
+
+static_assert(sizeof(FeatureRegion) <= kFeatureRegionSize,
+    "FeatureRegion exceeds kFeatureRegionSize — adjust kFeatureRegionSize");
+static_assert(sizeof(FeatureRegion) == kMaxInstruments * kFeatureSlotBytes,
+    "FeatureRegion size must equal kMaxInstruments * kFeatureSlotBytes");
+static_assert(std::is_standard_layout_v<FeatureRegion>,
+    "FeatureRegion must be standard-layout for safe SHM overlay");
+
+
+
 // ── PositionStateView ──────────────────────────────────────────────────────
 //
 // Layout at /dev/shm/egbos_position_state (kPositionStateRegionSize bytes).
@@ -658,7 +903,8 @@ namespace {
 struct ShmRegionPointers {
     void* market_events;
     void* lob_snapshots;
-    void* feature_vector;
+    void* feature_vector;   // legacy single-slot (preserved for compat)
+    void* feature_slots;    // per-instrument production FeatureRegion (§3b)
     void* position_state;
     void* risk_limits;
     void* exec_commands;
@@ -666,26 +912,26 @@ struct ShmRegionPointers {
     void* governance_flags;
 };
 
-// shm_init_all — opens and locks all eight SHM regions.
+// shm_init_all — opens and locks all nine SHM regions.
 // Must be called once at startup. Fatal on any failure.
 inline ShmRegionPointers shm_init_all() noexcept {
-    // Open all eight regions in the canonical order from spec §6.2.
+    // Open all nine regions in the canonical order from spec §6.2.
     // Each call to open_shm_region() is fatal on failure — this function
-    // returns only when ALL eight regions are successfully mapped and locked.
+    // returns only when ALL regions are successfully mapped and locked.
 
     ShmRegionPointers ptrs{};
 
     ptrs.market_events    = open_shm_region(kMarketEventsPath,     kMarketEventsRegionSize,     true);
     ptrs.lob_snapshots    = open_shm_region(kLobSnapshotsPath,     kLobSnapshotsRegionSize,     true);
     ptrs.feature_vector   = open_shm_region(kFeatureVectorPath,    kFeatureVectorRegionSize,    true);
+    ptrs.feature_slots    = open_shm_region(kFeatureSlotsPath,     kFeatureRegionSize,          true);
     ptrs.position_state   = open_shm_region(kPositionStatePath,    kPositionStateRegionSize,    true);
     ptrs.risk_limits      = open_shm_region(kRiskLimitsPath,       kRiskLimitsRegionSize,       true);
     ptrs.exec_commands    = open_shm_region(kExecCommandsPath,     kExecCommandsRegionSize,     true);
     ptrs.regime_signal    = open_shm_region(kRegimeSignalPath,     kRegimeSignalRegionSize,     true);
     ptrs.governance_flags = open_shm_region(kGovernanceFlagsPath,  kGovernanceFlagsRegionSize,  true);
 
-    // All eight regions opened, mapped, and mlocked.
-    // The engine may now construct SpscRing and WalWriter instances.
+    // All nine regions opened, mapped, and mlocked.
     return ptrs;
 }
 
@@ -698,14 +944,15 @@ inline ShmRegionPointers shm_init_all() noexcept {
 inline constexpr std::size_t kTotalShmBytes =
     kMarketEventsRegionSize    +   //  8,388,608 bytes  (65536 × 128)
     kLobSnapshotsRegionSize    +   //  2,097,152 bytes  (2 × 256 × 4096)
-    kFeatureVectorRegionSize   +   //      4,096 bytes
+    kFeatureVectorRegionSize   +   //      4,096 bytes  (legacy single-slot)
+    kFeatureRegionSize         +   //    131,072 bytes  (256 × 512 per-instrument slots)
     kPositionStateRegionSize   +   //      4,096 bytes
     kRiskLimitsRegionSize      +   //      4,096 bytes
     kExecCommandsRegionSize    +   //    262,144 bytes  (4096 × 64)
     kRegimeSignalRegionSize    +   //      4,096 bytes
     kGovernanceFlagsRegionSize;    //      4,096 bytes
                                    // ──────────────────
-                                   // ≈ 10.75 MB total SHM (S1 skeleton)
+                                   // ≈ 10.88 MB total SHM
 
 static_assert(kTotalShmBytes > 0,
     "kTotalShmBytes must be non-zero — all regions accounted for");

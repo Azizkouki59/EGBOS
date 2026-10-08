@@ -244,7 +244,8 @@ TEST_F(L1ConsumerTest, PublishesL1SnapshotToL2) {
     ASSERT_FALSE(integrated_consumer.is_degraded());
 
     Top5BidsAsks snapshot{};
-    ASSERT_TRUE(reader.read(0, snapshot));
+    uint64_t out_seq = 0;
+    ASSERT_TRUE(reader.read(0, snapshot, out_seq));
 
     EXPECT_EQ(snapshot.bid_qtys[0], 100'000u);
     EXPECT_GT(snapshot.bid_qtys[0], 0u);

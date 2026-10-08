@@ -42,7 +42,8 @@ TEST(L2SnapshotTransportTest, PublishAndReadExactTop5Payload) {
         1u);
 
     egbos::l1::Top5BidsAsks actual{};
-    ASSERT_TRUE(reader.read(7, actual));
+    uint64_t out_seq = 0;
+    ASSERT_TRUE(reader.read(7, actual, out_seq));
 
     EXPECT_EQ(
         std::memcmp(&expected, &actual, sizeof(expected)),
@@ -75,7 +76,8 @@ TEST(L2SnapshotTransportTest, SecondPublishAlternatesBuffer) {
         0u);
 
     egbos::l1::Top5BidsAsks actual{};
-    ASSERT_TRUE(reader.read(3, actual));
+    uint64_t out_seq = 0;
+    ASSERT_TRUE(reader.read(3, actual, out_seq));
 
     EXPECT_EQ(
         std::memcmp(&second, &actual, sizeof(second)),
@@ -95,8 +97,9 @@ TEST(L2SnapshotTransportTest, InvalidInstrumentIsRejected) {
         publisher.publish(egbos::shm::kMaxInstruments, snapshot));
 
     egbos::l1::Top5BidsAsks out{};
+    uint64_t out_seq = 0;
     EXPECT_FALSE(
-        reader.read(egbos::shm::kMaxInstruments, out));
+        reader.read(egbos::shm::kMaxInstruments, out, out_seq));
 }
 
 } // namespace

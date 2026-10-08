@@ -258,6 +258,24 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_compile_features(test_l2_snapshot_reader PRIVATE cxx_std_20)
   gtest_discover_tests(test_l2_snapshot_reader)
 
+  # ── L2 → L3 FeatureRegion ABI transport tests ─────────────────────────────
+  # Tests the per-instrument FeatureSlot seqlock protocol:
+  #   publish/read, replacement, unpublished/torn/schema rejection,
+  #   source_seq preservation, slot independence, concurrent SPSC correctness.
+  #
+  # CRITICAL ISOLATION: links engine_l2 (production module) and engine_core only.
+  # Must NOT link engine_l2_candidates or engine_l2_hawkes — the transport ABI
+  # must be validated without any research module contamination.
+  add_executable(test_l2_feature_transport
+    test_l2_feature_transport.cpp
+  )
+  target_link_libraries(test_l2_feature_transport PRIVATE
+    engine_core engine_l2 GTest::gtest GTest::gtest_main pthread)
+  target_compile_features(test_l2_feature_transport PRIVATE cxx_std_20)
+  gtest_discover_tests(test_l2_feature_transport)
+
+
+
   # ── L2: Hawkes intensity unit tests ──────────────────────────────────────
   # governance/claims/CLAIM-L2-HAWKES-001.yaml (status: pending)
   #

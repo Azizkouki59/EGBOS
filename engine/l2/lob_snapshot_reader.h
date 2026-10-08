@@ -68,7 +68,8 @@ public:
     // No dynamic allocation, clock, PRNG, or external I/O.
     bool read(
         uint32_t instrument_id,
-        egbos::l1::Top5BidsAsks& out) const noexcept
+        egbos::l1::Top5BidsAsks& out,
+        uint64_t& out_seq) const noexcept
     {
         if (region_ == nullptr || instrument_id >= egbos::shm::kMaxInstruments) {
             return false;
@@ -115,6 +116,7 @@ public:
             if (seq1 == seq2 &&
                 !(seq2 & 1u) &&
                 active == active2) {
+                out_seq = seq1;
                 return true;
             }
         }
