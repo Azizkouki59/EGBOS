@@ -566,9 +566,15 @@ struct alignas(64) FeatureSlot {
         if (src_payload_bytes > kFeatureSlotPayloadBytes) {
             return false;
         }
+        if (src_payload == nullptr && src_payload_bytes != 0u) {
+            return false;
+        }
 
         // Phase 1: begin write — sequence becomes odd.
         header.sequence.fetch_add(1, std::memory_order_seq_cst);
+        // Order the odd sequence store before all following data stores
+        // (a seq_cst RMW does not order later stores on weak memory models).
+        std::atomic_thread_fence(std::memory_order_release);
 
         // Phase 2: write metadata (non-atomic fields — protected by seqlock).
         header.instrument_id  = instrument_id;
@@ -606,6 +612,8 @@ struct alignas(64) FeatureSlot {
     //   (c) seq1 != seq2   → write occurred during copy (torn)
     //   (d) out_schema_ver != expected_schema_ver  → caller must check
     //
+    // On failure (returns false), all out_* fields and out_payload are
+    // UNDEFINED and must not be used.
     // On success (returns true), all out_* fields are populated from a
     // consistent snapshot.  out_payload must point to kFeatureSlotPayloadBytes
     // bytes of caller-owned storage.
@@ -952,7 +960,7 @@ inline constexpr std::size_t kTotalShmBytes =
     kRegimeSignalRegionSize    +   //      4,096 bytes
     kGovernanceFlagsRegionSize;    //      4,096 bytes
                                    // ──────────────────
-                                   // ≈ 10.88 MB total SHM
+                                   // = 10,899,456 bytes (≈ 10.39 MiB) total SHM
 
 static_assert(kTotalShmBytes > 0,
     "kTotalShmBytes must be non-zero — all regions accounted for");
