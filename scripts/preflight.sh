@@ -53,7 +53,8 @@ if [ ! -x "${PREFLIGHT_TOOL}" ] ||
         -I "${BUILD_DIR}/schemas/generated" \
         -I "${BUILD_DIR}/_deps/flatbuffers-src/include" \
         "${PREFLIGHT_SRC}" \
-        -o "${PREFLIGHT_TOOL}"
+        -o "${PREFLIGHT_TOOL}" \
+        -lssl -lcrypto
 fi
 
 echo "=== EGBOS Pre-flight: Staging Validation Sequence ==="
@@ -62,7 +63,15 @@ echo ""
 
 # PF-01: WAL Integrity Scan
 echo "[PF-01] WAL Integrity Scan"
-"${PREFLIGHT_TOOL}" wal-scan "${WAL_FILE}"
+if ! "${PREFLIGHT_TOOL}" wal-scan "${WAL_FILE}"; then
+    echo "PF-01 FAILED — invoking REC-008 steps 1-3 (WAL-only recovery record)"
+    "${PREFLIGHT_TOOL}" wal-recovery-record "${WAL_FILE}" || true
+    echo "REC-008 steps 4-7 (RFP reconciliation if applicable, Founder"
+    echo "HITL_RESTART_AUTH signature, INCIDENT record) require manual"
+    echo "action before this engine may restart. See governance/recovery/"
+    echo "for the generated RECOVERY-RECORD."
+    exit 1
+fi
 
 # PF-02: Position Reconstruction Verification
 echo "[PF-02] WAL-only Position Reconstruction — pre-engine INV-001 prerequisite"
@@ -70,19 +79,11 @@ echo "[PF-02] WAL-only Position Reconstruction — pre-engine INV-001 prerequisi
 
 # PF-03: Safety Monitor Latch Audit
 echo "[PF-03] Safety Monitor Latch Audit"
-if [ -f /dev/shm/egbos_risk_limits ]; then
-    echo "PASS (Latches verified)"
-else
-    echo "NOT APPLICABLE (staging: no live latches found)"
-fi
+"${PREFLIGHT_TOOL}" risk-latches
 
 # PF-04: Governance Flags Region Initialization
 echo "[PF-04] Governance Flags Region Initialization"
-if [ -f /dev/shm/egbos_governance_flags ]; then
-    echo "PASS (flags region mapped)"
-else
-    echo "NOT APPLICABLE (staging: flags region not mapped yet)"
-fi
+"${PREFLIGHT_TOOL}" governance-flags
 
 # PF-05: Claim Expiry Sweep
 echo "[PF-05] Claim Expiry Sweep — govcheck deploy-gate --target staging"
@@ -95,29 +96,84 @@ echo "=== Phase 2 (Schema Verification: PF-06..PF-09): serial ==="
 
 # PF-06: FlatBuffers Schema Freshness
 echo "[PF-06] FlatBuffers Schema Freshness"
-if git diff --quiet --exit-code "${REPO_ROOT}/schemas/generated/"; then
-    echo "PASS (committed flatc output matches binary/source)"
-else
-    echo "FAIL (schemas/generated/ has unstaged changes)"
+FLATC="${BUILD_DIR}/_deps/flatbuffers-build/flatc"
+PF06_TMP="$(mktemp -d)"
+trap 'rm -rf "${PF06_TMP}"' EXIT
+PF06_FAIL=0
+if [ ! -x "${FLATC}" ]; then
+    echo "FAIL (flatc not found at ${FLATC})"
     exit 1
 fi
+for fbs in "${REPO_ROOT}"/schemas/*.fbs; do
+    "${FLATC}" --cpp -o "${PF06_TMP}" "${fbs}" || { echo "FAIL (flatc failed on ${fbs})"; exit 1; }
+done
+for gen in "${PF06_TMP}"/*_generated.h; do
+    base="$(basename "${gen}")"
+    committed="${REPO_ROOT}/schemas/generated/${base}"
+    if [ ! -f "${committed}" ]; then
+        continue
+    fi
+    if ! diff -q "${gen}" "${committed}" > /dev/null; then
+        echo "FAIL (${base} differs from freshly generated output)"
+        PF06_FAIL=1
+    fi
+done
+if [ "${PF06_FAIL}" -ne 0 ]; then
+    exit 1
+fi
+echo "PASS (committed generated headers match fresh flatc output)"
 
 # PF-07: Registry Entry Signature Verification
 echo "[PF-07] Registry Entry Signature Verification"
-echo "PASS (staging: no model registry entries active pre-live)"
+MODEL_REGISTRY_DIR="${REPO_ROOT}/governance/model-registry"
+if [ ! -d "${MODEL_REGISTRY_DIR}" ]; then
+    echo "NOT APPLICABLE (governance/model-registry/ does not exist; S11 not started)"
+elif [ -z "$(find "${MODEL_REGISTRY_DIR}" -maxdepth 1 -name '*.yaml' -print -quit)" ]; then
+    echo "NOT APPLICABLE (governance/model-registry/ exists but has zero entries)"
+else
+    PF07_FAIL=0
+    for entry in "${MODEL_REGISTRY_DIR}"/*.yaml; do
+        if ! grep -q "^signature:" "${entry}"; then
+            echo "FAIL (${entry} missing signature field)"
+            PF07_FAIL=1
+        fi
+    done
+    if [ "${PF07_FAIL}" -ne 0 ]; then
+        exit 1
+    fi
+    echo "PASS (all model registry entries have a signature field)"
+fi
 
 # PF-08: timing_constants.json Hardware Match
 echo "[PF-08] timing_constants.json Hardware Match"
-HWID="${EGBOS_HARDWARE_ID:-dev-workstation-001}"
-if grep -q "$HWID" "${REPO_ROOT}/governance/timing_constants.json" 2>/dev/null; then
-    echo "PASS (hardware_id=$HWID verified)"
+TIMING_FILE="${REPO_ROOT}/governance/proof_artifacts/timing_constants.json"
+RUNTIME_HWID="${EGBOS_HARDWARE_ID:-$(hostname)}"
+if [ ! -f "${TIMING_FILE}" ]; then
+    echo "FAIL (${TIMING_FILE} not found)"
+    exit 1
+fi
+COMMITTED_HWID="$(grep -o '"hardware_id":[[:space:]]*"[^"]*"' "${TIMING_FILE}" | sed 's/.*"\([^"]*\)"$/\1/')"
+if [ -z "${COMMITTED_HWID}" ]; then
+    echo "FAIL (hardware_id field missing or unparsable in ${TIMING_FILE})"
+    exit 1
+fi
+if [ "${COMMITTED_HWID}" = "dev-workstation-001" ] || [ "${COMMITTED_HWID}" = "staging-synthetic" ]; then
+    echo "NOT APPLICABLE (committed timing_constants.json is a dev/staging baseline, hardware_id=${COMMITTED_HWID}; production match not required pre-S7)"
+elif [ "${COMMITTED_HWID}" = "${RUNTIME_HWID}" ]; then
+    echo "PASS (hardware_id=${COMMITTED_HWID} matches runtime host)"
 else
-    echo "NOT APPLICABLE (staging-synthetic hardware bypass)"
+    echo "FAIL (committed hardware_id=${COMMITTED_HWID} does not match runtime host=${RUNTIME_HWID})"
+    exit 1
 fi
 
 # PF-09: ONNX Model Hash and Runtime Version Verification
 echo "[PF-09] ONNX Model Hash and Runtime Version Verification"
-echo "PASS (staging: no ONNX models loaded pre-live)"
+if [ ! -d "${MODEL_REGISTRY_DIR}" ] || [ -z "$(find "${MODEL_REGISTRY_DIR}" -maxdepth 1 -name '*.yaml' -print -quit)" ]; then
+    echo "NOT APPLICABLE (Phase V-F not active; no model registry entries)"
+else
+    echo "FAIL (model registry entries present but PF-09 ONNX verification not yet implemented)"
+    exit 1
+fi
 
 echo ""
 echo "Phase 2 RESULT — no FAILs (PF-08 is N/A in pre-live staging)"
@@ -126,7 +182,37 @@ echo "=== Phase 3 (Connection Integrity: PF-12 only in staging) ==="
 
 # PF-12: SHM Region mlock Confirmation
 echo "[PF-12] SHM Region mlock Confirmation"
-echo "NOT APPLICABLE (staging: SHM regions bypassed for pre-live)"
+SHM_PATHS="egbos_market_events egbos_lob_snapshots egbos_feature_vector egbos_position_state egbos_risk_limits egbos_exec_commands egbos_regime_signal egbos_governance_flags"
+SHM_HOLDER_PID=""
+for shm in ${SHM_PATHS}; do
+    if [ -e "/dev/shm/${shm}" ]; then
+        HOLDER="$(fuser "/dev/shm/${shm}" 2>/dev/null | awk '{print $1}')"
+        if [ -n "${HOLDER}" ]; then
+            SHM_HOLDER_PID="${HOLDER}"
+            break
+        fi
+    fi
+done
+if [ -z "${SHM_HOLDER_PID}" ]; then
+    echo "NOT APPLICABLE (no live process holding /egbos_* SHM regions)"
+else
+    PF12_FAIL=0
+    for shm in ${SHM_PATHS}; do
+        if [ ! -e "/dev/shm/${shm}" ]; then
+            echo "FAIL (missing SHM region: /dev/shm/${shm})"
+            PF12_FAIL=1
+        fi
+    done
+    VMLCK="$(grep -i '^VmLck:' "/proc/${SHM_HOLDER_PID}/status" 2>/dev/null | awk '{print $2}')"
+    if [ -z "${VMLCK}" ] || [ "${VMLCK}" -eq 0 ]; then
+        echo "FAIL (holder pid=${SHM_HOLDER_PID} has VmLck=0; regions not mlocked)"
+        PF12_FAIL=1
+    fi
+    if [ "${PF12_FAIL}" -ne 0 ]; then
+        exit 1
+    fi
+    echo "PASS (all 8 SHM regions present; holder pid=${SHM_HOLDER_PID} VmLck=${VMLCK}kB)"
+fi
 
 echo ""
 echo "Phase 3 RESULT — no FAILs (PF-12 is N/A in pre-live staging)"
