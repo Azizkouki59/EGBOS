@@ -13,14 +13,13 @@
 //   - No floating-point (AD-004)
 
 #include "execution_router.h"
-#include "governance_interface.h"
 
 #include <cstring>
 
 namespace egbos::l5 {
 
 ExecutionRouter::ExecutionRouter(
-    shm::ExecCommandsRegion*    exec_ring,
+    ExecCommandsRegion*        exec_ring,
     const shm::GovernanceFlags* gov_flags
 ) noexcept
     : exec_ring_(exec_ring)

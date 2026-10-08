@@ -1,10 +1,9 @@
-// engine/tests/test_snapshot_contract.cpp
 #include <gtest/gtest.h>
 #include "../core/snapshot_serializer.h"
 #include "../core/snapshot_deserializer.h"
 #include "../core/position_engine.h"
 #include "../core/risk_enforcer.h"
-#include "../core/governance_interface.h"
+#include "../core/shm_layout.h"
 #include "../core/wal_writer.h"
 #include "../core/snapshot_abi.h"
 #include "../l1/lob_engine.h"
@@ -16,11 +15,12 @@ using namespace egbos::l1;
 
 TEST(SnapshotContractTest, SerializationHydrationSucceeds) {
     egbos::wal::WalWriter wal_writer("/tmp/dummy_wal", "/tmp/dummy_wal_shadow");
-    GovernanceFlags gov_flags;
+    egbos::shm::GovernanceFlags gov_flags;
+    egbos::shm::RiskLimitsRegion risk_limits;
 
-    auto pos_engine = std::make_unique<PositionEngine>(wal_writer, gov_flags);
-    auto risk_enforcer = std::make_unique<RiskEnforcer>(gov_flags, *pos_engine);
-    auto lob_engine = std::make_unique<LobEngine>(100000, 100);
+    auto pos_engine    = std::make_unique<PositionEngine>(wal_writer);
+    auto risk_enforcer = std::make_unique<RiskEnforcer>(gov_flags, risk_limits, *pos_engine);
+    auto lob_engine    = std::make_unique<LobEngine>(100000, 100);
 
     // Setup some state
     FillEvent f; f.instrument_id = 1; f.quantity = 10; f.signed_qty = 10; f.price = 100000;
@@ -37,9 +37,11 @@ TEST(SnapshotContractTest, SerializationHydrationSucceeds) {
 
     // Deserialize into fresh engines
     std::cerr << "Creating fresh engines\n";
-    auto new_pos = std::make_unique<PositionEngine>(wal_writer, gov_flags);
-    auto new_risk = std::make_unique<RiskEnforcer>(gov_flags, *new_pos);
-    auto new_lob = std::make_unique<LobEngine>(100000, 100);
+    egbos::shm::GovernanceFlags gov_flags2;
+    egbos::shm::RiskLimitsRegion risk_limits2;
+    auto new_pos  = std::make_unique<PositionEngine>(wal_writer);
+    auto new_risk = std::make_unique<RiskEnforcer>(gov_flags2, risk_limits2, *new_pos);
+    auto new_lob  = std::make_unique<LobEngine>(100000, 100);
 
     std::cerr << "Hydrating\n";
     bool hydrated = SnapshotDeserializer::deserialize(blob, *new_pos, *new_risk, *new_lob);
@@ -77,18 +79,19 @@ TEST(SnapshotContractTest, SerializationHydrationSucceeds) {
 
 TEST(SnapshotContractTest, DeterministicSerializationIgnoresHeartbeat) {
     egbos::wal::WalWriter wal_writer("/tmp/dummy_wal2", "/tmp/dummy_wal_shadow2");
-    GovernanceFlags gov_flags;
+    egbos::shm::GovernanceFlags gov_flags;
+    egbos::shm::RiskLimitsRegion risk_limits;
 
     // Risk A: heartbeat = T1
-    auto posA = std::make_unique<PositionEngine>(wal_writer, gov_flags);
-    auto riskA = std::make_unique<RiskEnforcer>(gov_flags, *posA);
-    auto lobA = std::make_unique<LobEngine>(100000, 100);
+    auto posA  = std::make_unique<PositionEngine>(wal_writer);
+    auto riskA = std::make_unique<RiskEnforcer>(gov_flags, risk_limits, *posA);
+    auto lobA  = std::make_unique<LobEngine>(100000, 100);
     riskA->set_heartbeat_tsc_for_test(1000);
 
     // Risk B: heartbeat = T2 (same logical state)
-    auto posB = std::make_unique<PositionEngine>(wal_writer, gov_flags);
-    auto riskB = std::make_unique<RiskEnforcer>(gov_flags, *posB);
-    auto lobB = std::make_unique<LobEngine>(100000, 100);
+    auto posB  = std::make_unique<PositionEngine>(wal_writer);
+    auto riskB = std::make_unique<RiskEnforcer>(gov_flags, risk_limits, *posB);
+    auto lobB  = std::make_unique<LobEngine>(100000, 100);
     riskB->set_heartbeat_tsc_for_test(9999);
 
     auto blobA = SnapshotSerializer::serialize(*posA, *riskA, *lobA);
@@ -100,19 +103,22 @@ TEST(SnapshotContractTest, DeterministicSerializationIgnoresHeartbeat) {
 
 TEST(SnapshotContractTest, RejectsOldSchemaVersionWithValidHash) {
     egbos::wal::WalWriter wal_writer("/tmp/dummy_wal3", "/tmp/dummy_wal_shadow3");
-    GovernanceFlags gov_flags;
-    auto pos = std::make_unique<PositionEngine>(wal_writer, gov_flags);
-    auto risk = std::make_unique<RiskEnforcer>(gov_flags, *pos);
-    auto lob = std::make_unique<LobEngine>(100000, 100);
+    egbos::shm::GovernanceFlags gov_flags;
+    egbos::shm::RiskLimitsRegion risk_limits;
+    auto pos  = std::make_unique<PositionEngine>(wal_writer);
+    auto risk = std::make_unique<RiskEnforcer>(gov_flags, risk_limits, *pos);
+    auto lob  = std::make_unique<LobEngine>(100000, 100);
     lob->add_order(1, 100100, 5, true);
 
     auto blob = SnapshotSerializer::serialize(*pos, *risk, *lob);
 
     // Sanity: the untouched blob must deserialize.
     {
-        auto pos2 = std::make_unique<PositionEngine>(wal_writer, gov_flags);
-        auto risk2 = std::make_unique<RiskEnforcer>(gov_flags, *pos2);
-        auto lob2 = std::make_unique<LobEngine>(100000, 100);
+        egbos::shm::GovernanceFlags gov2;
+        egbos::shm::RiskLimitsRegion risk_limits2;
+        auto pos2  = std::make_unique<PositionEngine>(wal_writer);
+        auto risk2 = std::make_unique<RiskEnforcer>(gov2, risk_limits2, *pos2);
+        auto lob2  = std::make_unique<LobEngine>(100000, 100);
         ASSERT_TRUE(SnapshotDeserializer::deserialize(blob, *pos2, *risk2, *lob2));
     }
 
@@ -123,8 +129,10 @@ TEST(SnapshotContractTest, RejectsOldSchemaVersionWithValidHash) {
     std::memset(hdr->hash, 0, 32);
     SHA256(blob.data(), blob.size(), hdr->hash);
 
-    auto pos3 = std::make_unique<PositionEngine>(wal_writer, gov_flags);
-    auto risk3 = std::make_unique<RiskEnforcer>(gov_flags, *pos3);
-    auto lob3 = std::make_unique<LobEngine>(100000, 100);
+    egbos::shm::GovernanceFlags gov3;
+    egbos::shm::RiskLimitsRegion risk_limits3;
+    auto pos3  = std::make_unique<PositionEngine>(wal_writer);
+    auto risk3 = std::make_unique<RiskEnforcer>(gov3, risk_limits3, *pos3);
+    auto lob3  = std::make_unique<LobEngine>(100000, 100);
     EXPECT_FALSE(SnapshotDeserializer::deserialize(blob, *pos3, *risk3, *lob3));
 }

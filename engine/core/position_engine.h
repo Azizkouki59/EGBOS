@@ -6,9 +6,7 @@
 
 #include <atomic>
 #include <cstdint>
-#include <memory>
 #include "wal_writer.h"
-#include "governance_interface.h"
 
 namespace egbos::core {
 
@@ -21,7 +19,7 @@ struct FillEvent {
 
 class PositionEngine {
 public:
-    explicit PositionEngine(wal::WalWriter& wal_writer, GovernanceFlags& gov_flags);
+    explicit PositionEngine(wal::WalWriter& wal_writer);
     ~PositionEngine() = default;
 
     // Disallow copy/move
@@ -34,7 +32,6 @@ public:
 
 private:
     wal::WalWriter& wal_writer_;
-    GovernanceFlags& governance_flags_;
     uint64_t next_sequence_{1};
 
     // Exclusive L3 state

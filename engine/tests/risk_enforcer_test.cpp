@@ -8,7 +8,7 @@
 #include <chrono>
 #include "core/risk_enforcer.h"
 #include "core/position_engine.h"
-#include "core/governance_interface.h"
+#include "core/shm_layout.h"
 #include "core/wal_writer.h"
 
 using namespace egbos;
@@ -30,15 +30,16 @@ protected:
         primary = tmp_path("wal_risk_primary");
         shadow  = tmp_path("wal_risk_shadow");
         writer  = std::make_unique<WalWriter>(primary.c_str(), shadow.c_str());
-        gov.pos_limit_latch.store(100000, std::memory_order_relaxed);
-        gov.halt_required.store(0, std::memory_order_relaxed);
-        pos_engine = std::make_unique<PositionEngine>(*writer, gov);
-        risk       = std::make_unique<RiskEnforcer>(gov, *pos_engine);
+        risk_limits.pos_limit.store(100000, std::memory_order_relaxed);
+        gov.halt_required.store(false, std::memory_order_relaxed);
+        pos_engine = std::make_unique<PositionEngine>(*writer);
+        risk       = std::make_unique<RiskEnforcer>(gov, risk_limits, *pos_engine);
     }
 
     std::string primary, shadow;
     std::unique_ptr<WalWriter>   writer;
-    GovernanceFlags                   gov{};
+    shm::GovernanceFlags         gov{};
+    shm::RiskLimitsRegion        risk_limits{};
     std::unique_ptr<PositionEngine>   pos_engine;
     std::unique_ptr<RiskEnforcer>     risk;
 };
@@ -50,18 +51,18 @@ TEST_F(RiskEnforcerFixture, InitialStateIsInactive) {
 TEST_F(RiskEnforcerFixture, ApplyBreachIsMonotone) {
     // Latch starts at 100000. Lower it to 500.
     risk->apply_breach(500);
-    int64_t latch = gov.pos_limit_latch.load(std::memory_order_acquire);
+    int64_t latch = risk_limits.pos_limit.load(std::memory_order_acquire);
     EXPECT_EQ(latch, 500);
 
     // Attempt to raise it — must NOT take effect (monotone only decreases)
     risk->apply_breach(99999);
-    latch = gov.pos_limit_latch.load(std::memory_order_acquire);
+    latch = risk_limits.pos_limit.load(std::memory_order_acquire);
     EXPECT_EQ(latch, 500);
 }
 
 TEST_F(RiskEnforcerFixture, EvaluateRiskTriggersEmergencyOnBreach) {
     // Set latch to 0 (any exposure will breach)
-    gov.pos_limit_latch.store(0, std::memory_order_release);
+    risk_limits.pos_limit.store(0, std::memory_order_release);
 
     // Apply a fill so exposure > 0
     FillEvent fill{1, 5, 5, 1000};
@@ -70,7 +71,7 @@ TEST_F(RiskEnforcerFixture, EvaluateRiskTriggersEmergencyOnBreach) {
     risk->evaluate_risk();
 
     EXPECT_EQ(risk->get_state(), QuotingState::EMERGENCY);
-    EXPECT_EQ(gov.halt_required.load(std::memory_order_acquire), 1);
+    EXPECT_TRUE(gov.halt_required.load(std::memory_order_acquire));
 }
 
 // ── CLAIM-L4-001: Kill switch < 1ms response (AD-010) ───────────────────────
@@ -78,7 +79,7 @@ TEST_F(RiskEnforcerFixture, EvaluateRiskTriggersEmergencyOnBreach) {
 // This test measures the time from breach detection to halt_required=1.
 TEST_F(RiskEnforcerFixture, KillSwitch_ResponseTime_Under_1ms) {
     // Set latch to 0 — any fill will exceed it
-    gov.pos_limit_latch.store(0, std::memory_order_release);
+    risk_limits.pos_limit.store(0, std::memory_order_release);
 
     // Apply a fill to create exposure
     FillEvent fill{1, 100, 100, 1000};
@@ -91,7 +92,7 @@ TEST_F(RiskEnforcerFixture, KillSwitch_ResponseTime_Under_1ms) {
 
     auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 
-    EXPECT_EQ(gov.halt_required.load(std::memory_order_acquire), 1)
+    EXPECT_TRUE(gov.halt_required.load(std::memory_order_acquire))
         << "halt_required was not set after breach";
     EXPECT_LT(elapsed_us, 1000)
         << "Kill switch response " << elapsed_us << "µs exceeded 1ms budget (CLAIM-L4-001)";
@@ -100,10 +101,10 @@ TEST_F(RiskEnforcerFixture, KillSwitch_ResponseTime_Under_1ms) {
 // ── CLAIM-L4-001: Monotone latch prevents re-arming ─────────────────────────
 // Once halt_required=1, apply_breach cannot raise the latch above current level.
 TEST_F(RiskEnforcerFixture, HaltRequired_CannotBeCleared) {
-    gov.halt_required.store(1, std::memory_order_release);
+    gov.halt_required.store(true, std::memory_order_release);
     // Attempt to raise latch (simulating re-arm) — must not succeed
-    int64_t before = gov.pos_limit_latch.load(std::memory_order_acquire);
+    int64_t before = risk_limits.pos_limit.load(std::memory_order_acquire);
     risk->apply_breach(before + 1000); // attempt raise
-    int64_t after = gov.pos_limit_latch.load(std::memory_order_acquire);
+    int64_t after = risk_limits.pos_limit.load(std::memory_order_acquire);
     EXPECT_LE(after, before) << "Monotone latch was raised — AD-010 violated";
 }

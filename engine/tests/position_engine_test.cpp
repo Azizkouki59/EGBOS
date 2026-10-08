@@ -9,7 +9,6 @@
 #include <limits>
 #include <cmath>
 #include "core/position_engine.h"
-#include "core/governance_interface.h"
 #include "core/cross_plane.h"
 #include "core/wal_writer.h"
 
@@ -46,10 +45,7 @@ TEST(PositionEngineTest, ApplyFillUpdatesGrossExposure) {
     ScopedWalFiles wal;
 
     WalWriter writer(wal.primary.c_str(), wal.shadow.c_str());
-    GovernanceFlags gov{};
-    gov.pos_limit_latch.store(100000, std::memory_order_relaxed);
-
-    PositionEngine engine(writer, gov);
+    PositionEngine engine(writer);
 
     FillEvent fill{};
     fill.instrument_id = 1;
@@ -71,10 +67,7 @@ TEST(PositionEngineTest, ApplyFillAccumulatesExposure) {
     ScopedWalFiles wal;
 
     WalWriter writer(wal.primary.c_str(), wal.shadow.c_str());
-    GovernanceFlags gov{};
-    gov.pos_limit_latch.store(100000, std::memory_order_relaxed);
-
-    PositionEngine engine(writer, gov);
+    PositionEngine engine(writer);
 
     FillEvent fill1{1, 10, 10, 1000};
     FillEvent fill2{1, 5,  5, 1001};
@@ -99,9 +92,7 @@ TEST(PositionEngineTest, WalBeforeState_Kill9Simulation) {
         ScopedWalFiles wal;
 
         WalWriter writer(wal.primary.c_str(), wal.shadow.c_str());
-        GovernanceFlags gov{};
-        gov.pos_limit_latch.store(1000000, std::memory_order_relaxed);
-        PositionEngine engine(writer, gov);
+        PositionEngine engine(writer);
 
         struct stat st_before{};
         ::stat(wal.primary.c_str(), &st_before);
@@ -137,10 +128,7 @@ TEST(PositionEngineTest, PositionInvariant_10M_Fills) {
     ScopedWalFiles wal;
 
     WalWriter writer(wal.primary.c_str(), wal.shadow.c_str());
-    GovernanceFlags gov{};
-    gov.pos_limit_latch.store(std::numeric_limits<int64_t>::max(),
-                              std::memory_order_relaxed);
-    PositionEngine engine(writer, gov);
+    PositionEngine engine(writer);
 
     const int N_FILLS = 10'000'000;
     int64_t expected_exposure = 0;

@@ -20,8 +20,8 @@ static uint64_t clock_monotonic_raw() {
 #endif
 }
 
-PositionEngine::PositionEngine(wal::WalWriter& wal_writer, GovernanceFlags& gov_flags)
-    : wal_writer_(wal_writer), governance_flags_(gov_flags) {}
+PositionEngine::PositionEngine(wal::WalWriter& wal_writer)
+    : wal_writer_(wal_writer) {}
 
 void PositionEngine::apply_fill(const FillEvent& fill) {
     // Step 1: Write WAL record FIRST — before any state change

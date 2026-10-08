@@ -6,7 +6,7 @@
 
 #include <atomic>
 #include <cstdint>
-#include "governance_interface.h"
+#include "shm_layout.h"
 #include "cross_plane.h"
 #include "position_engine.h"
 
@@ -22,7 +22,7 @@ enum class QuotingState {
 
 class RiskEnforcer {
 public:
-    explicit RiskEnforcer(GovernanceFlags& gov_flags, PositionEngine& pos_engine);
+    explicit RiskEnforcer(shm::GovernanceFlags& gov_flags, shm::RiskLimitsRegion& risk_limits, PositionEngine& pos_engine);
     ~RiskEnforcer() = default;
 
     // Disallow copy/move
@@ -41,7 +41,8 @@ public:
     void set_heartbeat_tsc_for_test(uint64_t tsc) noexcept { last_heartbeat_tsc_ = tsc; }
 
 private:
-    GovernanceFlags& governance_flags_;
+    shm::GovernanceFlags& governance_flags_;
+    shm::RiskLimitsRegion& risk_limits_;
     PositionEngine& position_engine_; // L4 has reference but only uses CROSS_PLANE_READ
 
     QuotingState current_state_{QuotingState::INACTIVE};

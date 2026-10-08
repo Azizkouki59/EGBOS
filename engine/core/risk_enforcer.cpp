@@ -5,8 +5,8 @@
 
 namespace egbos::core {
 
-RiskEnforcer::RiskEnforcer(GovernanceFlags& gov_flags, PositionEngine& pos_engine)
-    : governance_flags_(gov_flags), position_engine_(pos_engine) {}
+RiskEnforcer::RiskEnforcer(shm::GovernanceFlags& gov_flags, shm::RiskLimitsRegion& risk_limits, PositionEngine& pos_engine)
+    : governance_flags_(gov_flags), risk_limits_(risk_limits), position_engine_(pos_engine) {}
 
 void RiskEnforcer::evaluate_risk() {
     // Spec §4.3 and §7.1: read gross_exposure_ via CROSS_PLANE_READ
@@ -17,7 +17,7 @@ void RiskEnforcer::evaluate_risk() {
     );
 
     // If exposure breaches latch, transition to HEDGING/EMERGENCY
-    int64_t limit = governance_flags_.pos_limit_latch.load(std::memory_order_acquire);
+    int64_t limit = risk_limits_.pos_limit.load(std::memory_order_acquire);
     if (exposure > limit) {
         apply_breach(0); // Immediately reduce latch
         transition_state(QuotingState::EMERGENCY);
@@ -25,10 +25,10 @@ void RiskEnforcer::evaluate_risk() {
 }
 
 void RiskEnforcer::apply_breach(int64_t new_ceiling) {
-    int64_t current = governance_flags_.pos_limit_latch.load(std::memory_order_acquire);
+    int64_t current = risk_limits_.pos_limit.load(std::memory_order_acquire);
     // Monotone: only write if new_ceiling is strictly lower
     while (new_ceiling < current) {
-        if (governance_flags_.pos_limit_latch.compare_exchange_weak(
+        if (risk_limits_.pos_limit.compare_exchange_weak(
                 current, new_ceiling,
                 std::memory_order_release,
                 std::memory_order_acquire)) {
@@ -46,7 +46,7 @@ void RiskEnforcer::transition_state(QuotingState new_state) {
     
     // Simplistic implementation for the test harness:
     if (new_state == QuotingState::EMERGENCY) {
-        governance_flags_.halt_required.store(1, std::memory_order_release);
+        governance_flags_.halt_required.store(true, std::memory_order_release);
     }
     current_state_ = new_state;
 }
