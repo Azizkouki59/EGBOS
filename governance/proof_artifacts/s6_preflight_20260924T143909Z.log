@@ -1,0 +1,73 @@
+-- Using the multi-header code from /home/aziz/.cache/egbos-deps/json/include/
+-- Proceeding with version: 24.3.25.0
+-- CMAKE_CXX_FLAGS: 
+-- Configuring done (0.3s)
+-- Generating done (0.1s)
+-- Build files have been written to: /home/aziz/EGBOS/egbos/build_native
+[100%] Built target flatc
+[ 93%] Built target flatc
+[100%] Built target generate_schemas
+=== EGBOS Pre-flight: Staging Validation Sequence ===
+Blueprint §E3.3 — Phase 1 (State Validation: PF-01..PF-05): serial
+
+[PF-01] WAL Integrity Scan
+PASS (WAL clean. valid_records=21)
+[PF-02] WAL-only Position Reconstruction — pre-engine INV-001 prerequisite
+PASS (WAL-only position reconstruction; FILL_APPLIED records=0)
+  all reconstructed instrument positions are zero
+  NOTE: this is WAL-only reconstruction, not the live-engine INV-001 comparison.
+[PF-03] Safety Monitor Latch Audit
+NOT APPLICABLE (staging: no live latches found)
+[PF-04] Governance Flags Region Initialization
+NOT APPLICABLE (staging: flags region not mapped yet)
+[PF-05] Claim Expiry Sweep — govcheck deploy-gate --target staging
+[deploy-gate] Validating requirements for target staging...
+{
+  "findings": [
+    {
+      "claim_id": "",
+      "code": "GC-E-011",
+      "file": "/home/aziz/EGBOS/egbos/engine/l0/binance_trading_client.cpp",
+      "line": 97,
+      "message": "Prohibited use of CLOCK_REALTIME in engine/",
+      "severity": "warning"
+    }
+  ],
+  "govcheck_version": "1.0.0",
+  "scope": "C0,P3,P7,G1",
+  "summary": {
+    "errors": 0,
+    "fatals": 0,
+    "passed": true,
+    "total_claims": 18,
+    "warnings": 1
+  },
+  "timestamp": "2026-09-24T14:39:12Z"
+}
+[deploy-gate] All requirements met. Gate green.
+        Status: PASS
+
+Phase 1 RESULT — no FAILs (PF-03/PF-04 are N/A in pre-live staging)
+
+=== Phase 2 (Schema Verification: PF-06..PF-09): serial ===
+[PF-06] FlatBuffers Schema Freshness
+PASS (committed flatc output matches binary/source)
+[PF-07] Registry Entry Signature Verification
+PASS (staging: no model registry entries active pre-live)
+[PF-08] timing_constants.json Hardware Match
+NOT APPLICABLE (staging-synthetic hardware bypass)
+[PF-09] ONNX Model Hash and Runtime Version Verification
+PASS (staging: no ONNX models loaded pre-live)
+
+Phase 2 RESULT — no FAILs (PF-08 is N/A in pre-live staging)
+
+=== Phase 3 (Connection Integrity: PF-12 only in staging) ===
+[PF-12] SHM Region mlock Confirmation
+NOT APPLICABLE (staging: SHM regions bypassed for pre-live)
+
+Phase 3 RESULT — no FAILs (PF-12 is N/A in pre-live staging)
+
+=== VALIDATION RESULT ===
+Staging preflight result: 6 PASS, 4 N/A, 0 FAIL.
+governance_flags.preflight_armed = 0 (not armed in pre-live staging)
+PREFLIGHT NOT ARMED — pre-live staging validation only.

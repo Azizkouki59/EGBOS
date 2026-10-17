@@ -502,8 +502,9 @@ static_assert(sizeof(FeatureVectorRegion) <=  kFeatureVectorRegionSize,
 //   [ 16 – 23]  source_seq     uint64_t  — L2 snapshot sequence that produced these features
 //   [ 24 – 31]  pub_ts_ns      uint64_t  — publication timestamp (CLOCK_MONOTONIC_RAW, ns)
 //   [ 32 – 39]  validity_mask  uint64_t  — bit N=1 ↔ feature N is valid
-//   [ 40 – 43]  payload_bytes  uint32_t  — meaningful bytes in payload (≤ kFeatureSlotPayloadBytes)
-//   [ 44 – 63]  reserved_b     uint8_t[20] — must be 0; forward-compatible growth
+//   [ 40 – 43]  payload_bytes        uint32_t    — meaningful bytes in payload (≤ kFeatureSlotPayloadBytes)
+//   [ 44 – 51]  source_event_ts_ns   uint64_t    — L0 ingestion timestamp (CLOCK_MONOTONIC_RAW, ns)
+//   [ 52 – 63]  reserved_b           uint8_t[12] — must be 0; forward-compatible growth
 //
 // Field ordering: largest-alignment types first to avoid implicit padding.
 struct FeatureSlotHeader {
@@ -516,7 +517,8 @@ struct FeatureSlotHeader {
     uint64_t  pub_ts_ns{0};             // bytes 24–31: CLOCK_MONOTONIC_RAW ns
     uint64_t  validity_mask{0};          // bytes 32–39: bit N=1 → feature N valid
     uint32_t  payload_bytes{0};          // bytes 40–43: meaningful bytes in payload
-    uint8_t   reserved_b[20]{};          // bytes 44–63: must be 0
+    uint64_t  source_event_ts_ns{0};    // bytes 44–51: L0 ingestion timestamp (CLOCK_MONOTONIC_RAW, ns)
+    uint8_t   reserved_b[12]{};          // bytes 52–63: must be 0
 };
 
 static_assert(sizeof(FeatureSlotHeader) == 64,
@@ -532,8 +534,9 @@ static_assert(offsetof(FeatureSlotHeader, payload_count)  == 14, "FeatureSlotHea
 static_assert(offsetof(FeatureSlotHeader, source_seq)     == 16, "FeatureSlotHeader layout");
 static_assert(offsetof(FeatureSlotHeader, pub_ts_ns)      == 24, "FeatureSlotHeader layout");
 static_assert(offsetof(FeatureSlotHeader, validity_mask)  == 32, "FeatureSlotHeader layout");
-static_assert(offsetof(FeatureSlotHeader, payload_bytes)  == 40, "FeatureSlotHeader layout");
-static_assert(offsetof(FeatureSlotHeader, reserved_b)     == 44, "FeatureSlotHeader layout");
+static_assert(offsetof(FeatureSlotHeader, payload_bytes)         == 40, "FeatureSlotHeader layout");
+static_assert(offsetof(FeatureSlotHeader, source_event_ts_ns)    == 44, "FeatureSlotHeader layout");
+static_assert(offsetof(FeatureSlotHeader, reserved_b)            == 52, "FeatureSlotHeader layout");
 
 // ── FeatureSlot ───────────────────────────────────────────────────────────
 //
@@ -558,6 +561,7 @@ struct alignas(64) FeatureSlot {
         uint8_t   schema_ver,
         uint64_t  source_seq,
         uint64_t  pub_ts_ns,
+        uint64_t  source_event_ts_ns,
         uint64_t  validity_mask,
         uint16_t  feature_count,
         const uint8_t* src_payload,
@@ -577,14 +581,15 @@ struct alignas(64) FeatureSlot {
         std::atomic_thread_fence(std::memory_order_release);
 
         // Phase 2: write metadata (non-atomic fields — protected by seqlock).
-        header.instrument_id  = instrument_id;
-        header.schema_version = schema_ver;
-        header.reserved_a     = 0u;
-        header.payload_count  = feature_count;
-        header.source_seq     = source_seq;
-        header.pub_ts_ns      = pub_ts_ns;
-        header.validity_mask  = validity_mask;
-        header.payload_bytes  = src_payload_bytes;
+        header.instrument_id       = instrument_id;
+        header.schema_version      = schema_ver;
+        header.reserved_a          = 0u;
+        header.payload_count       = feature_count;
+        header.source_seq          = source_seq;
+        header.pub_ts_ns           = pub_ts_ns;
+        header.source_event_ts_ns  = source_event_ts_ns;
+        header.validity_mask       = validity_mask;
+        header.payload_bytes       = src_payload_bytes;
         std::memset(header.reserved_b, 0, sizeof(header.reserved_b));
 
         // Phase 3: write payload.
@@ -623,6 +628,7 @@ struct alignas(64) FeatureSlot {
         uint8_t&  out_schema_ver,
         uint64_t& out_source_seq,
         uint64_t& out_pub_ts_ns,
+        uint64_t& out_source_event_ts_ns,
         uint64_t& out_validity_mask,
         uint16_t& out_payload_count,
         uint32_t& out_payload_bytes,
@@ -634,13 +640,14 @@ struct alignas(64) FeatureSlot {
         if (seq1 & 1u)  return false;   // write in progress
 
         // Copy non-atomic metadata.
-        out_instrument_id  = header.instrument_id;
-        out_schema_ver     = header.schema_version;
-        out_source_seq     = header.source_seq;
-        out_pub_ts_ns      = header.pub_ts_ns;
-        out_validity_mask  = header.validity_mask;
-        out_payload_count  = header.payload_count;
-        out_payload_bytes  = header.payload_bytes;
+        out_instrument_id       = header.instrument_id;
+        out_schema_ver          = header.schema_version;
+        out_source_seq          = header.source_seq;
+        out_pub_ts_ns           = header.pub_ts_ns;
+        out_source_event_ts_ns  = header.source_event_ts_ns;
+        out_validity_mask       = header.validity_mask;
+        out_payload_count       = header.payload_count;
+        out_payload_bytes       = header.payload_bytes;
         if (out_payload) {
             std::memcpy(out_payload, payload, kFeatureSlotPayloadBytes);
         }

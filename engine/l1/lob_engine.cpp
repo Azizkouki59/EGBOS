@@ -295,10 +295,13 @@ void LobEngine::get_book_levels(std::vector<Level>& out_bids, std::vector<Level>
     }
 }
 
-Top5BidsAsks LobEngine::generate_top5_snapshot() const noexcept {
+Top5BidsAsks LobEngine::generate_top5_snapshot(uint64_t event_ts_ns) const noexcept {
     Top5BidsAsks snap;
     std::memset(&snap, 0, sizeof(Top5BidsAsks));
-    snap.anchor_price_low32 = static_cast<uint32_t>(anchor_price_ & 0xFFFFFFFF);
+    snap.anchor_price       = anchor_price_;
+    snap.tick_size          = tick_size_;
+    snap.source_event_ts_ns = event_ts_ns;
+    // _reserved is already zeroed by memset above.
 
     int count = 0;
     for (int32_t i = best_bid_index_; i >= 0 && count < 5; --i) {

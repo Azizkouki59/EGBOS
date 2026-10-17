@@ -19,16 +19,17 @@
 
 namespace egbos::l1 {
 
-static_assert(sizeof(Top5BidsAsks) == 64,
-              "L1->L2 payload ABI must remain 64 bytes");
+static_assert(sizeof(Top5BidsAsks) == 128,
+              "L1->L2 payload ABI must remain 128 bytes (v2)");
 static_assert(alignof(Top5BidsAsks) == 64,
               "L1->L2 payload ABI must remain 64-byte aligned");
 
-static_assert(offsetof(Top5BidsAsks, bid_qtys) == 0);
-static_assert(offsetof(Top5BidsAsks, ask_qtys) == 20);
-static_assert(offsetof(Top5BidsAsks, bid_price_offsets) == 40);
-static_assert(offsetof(Top5BidsAsks, ask_price_offsets) == 50);
-static_assert(offsetof(Top5BidsAsks, anchor_price_low32) == 60);
+static_assert(offsetof(Top5BidsAsks, bid_qtys)          ==   0);
+static_assert(offsetof(Top5BidsAsks, ask_qtys)          ==  20);
+static_assert(offsetof(Top5BidsAsks, bid_price_offsets) ==  40);
+static_assert(offsetof(Top5BidsAsks, ask_price_offsets) ==  50);
+static_assert(offsetof(Top5BidsAsks, anchor_price)      ==  64);
+static_assert(offsetof(Top5BidsAsks, tick_size)         ==  72);
 
 class LobSnapshotPublisher {
 public:

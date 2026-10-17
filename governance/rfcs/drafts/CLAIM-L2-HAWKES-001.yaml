@@ -3,7 +3,7 @@ claim_id: CLAIM-L2-HAWKES-001
 namespace: engine
 title: Univariate self-exciting Hawkes intensity computed on L0 depth-event stream (RFC-003)
 owner: founder
-status: pending
+status: ratified
 verification_class: V4
 description: feature.hawkes_intensity
 text: >

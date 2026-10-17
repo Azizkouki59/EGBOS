@@ -1,0 +1,83 @@
+# EGBOS Production Parameter Registry
+# Status: Authoritative
+# This file enumerates every numerical parameter used in production
+# feature computation. A parameter MUST appear here before it may be
+# referenced in engine/ code. Each entry cites its ratification source.
+
+# Format:
+#   feature_id   : hex feature ID (0x0000 = reserved)
+#   feature_name : human-readable name
+#   parameter    : parameter name (as used in code / governance claim)
+#   value        : exact numerical value (machine-representable)
+#   type         : C++ type used in production code
+#   source       : governance document that authorised this value
+#   code_ref     : file and constant/variable name in production code
+
+---
+
+entries:
+
+  - feature_id:   "0x0001"
+    feature_name: "Hawkes Intensity (FEAT-0001)"
+    parameter:    "mu"
+    symbol:       "μ — baseline intensity"
+    value:        0.1
+    type:         "double (constexpr)"
+    source:       "governance/claims/FEAT-0001-Hawkes-Intensity.md §2"
+    code_ref:     "engine/l2/feature_compute.cpp :: kMu"
+
+  - feature_id:   "0x0001"
+    feature_name: "Hawkes Intensity (FEAT-0001)"
+    parameter:    "alpha"
+    symbol:       "α — jump excitation amplitude"
+    value:        0.05
+    type:         "double (constexpr)"
+    source:       "governance/claims/FEAT-0001-Hawkes-Intensity.md §2"
+    code_ref:     "engine/l2/feature_compute.cpp :: kAlpha"
+
+  - feature_id:   "0x0001"
+    feature_name: "Hawkes Intensity (FEAT-0001)"
+    parameter:    "beta"
+    symbol:       "β — exponential decay rate"
+    value:        0.01
+    type:         "double (constexpr)"
+    source:       "governance/claims/FEAT-0001-Hawkes-Intensity.md §2"
+    code_ref:     "engine/l2/feature_compute.cpp :: kBeta"
+
+  - feature_id:   "0x0001"
+    feature_name: "Hawkes Intensity (FEAT-0001)"
+    parameter:    "max_intensity"
+    symbol:       "λ_max — numerical stability clamp"
+    value:        1000000.0
+    type:         "double (constexpr)"
+    source:       "governance/claims/FEAT-0001-Hawkes-Intensity.md §2 (implied by stability bound)"
+    code_ref:     "engine/l2/feature_compute.cpp :: kMaxIntensity"
+
+  - feature_id:   "0x0002"
+    feature_name: "Level-1 Order Flow Imbalance (FEAT-0002)"
+    parameter:    "none"
+    symbol:       "Level-1 OFI (parameter-free event contribution)"
+    value:        0.0
+    type:         "parameter-free"
+    source:       "governance/claims/FEAT-0002-Order-Flow-Imbalance.md"
+    code_ref:     "engine/l2/feature_compute.cpp"
+
+# ── BLOCKED parameters (not yet ratified) ────────────────────────────────────
+# The following parameters appear in the research report (engine/l2/rapport.txt)
+# but have NOT been ratified. They MUST NOT be referenced in production code.
+#
+# Feature: Multi-Level OFI (Level > 1)
+#   parameter: lambda (depth decay weight)   BLOCKED — no owner decision
+#
+# Feature: Queue Imbalance
+#   (no free parameters; blocked on feature ID/offset assignment only)
+#
+# Feature: Stoikov Micro-Price
+#   parameter: omega(delta_t) scaling fn     BLOCKED — requires empirical calibration
+#
+# Feature: Online Z-Scoring / Normalisation
+#   parameter: tau (decay factor)            BLOCKED — no owner decision
+#   parameter: c_max (clip bound)            BLOCKED — no owner decision
+#
+# Feature: VPIN
+#   ALL parameters                           BLOCKED — prerequisite L0 feed not available

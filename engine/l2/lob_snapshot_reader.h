@@ -6,10 +6,8 @@
 //   No feature mathematics is defined here.
 //
 // Current implementation payload:
-//   Top5BidsAsks, 64 bytes at payload offset 0.
-//
-// This is an implementation ABI assertion, not yet the quantitative
-// feature registry/schema.
+//   Top5BidsAsks, 128 bytes (ABI v2) at payload offset 0.
+//   v2 adds anchor_price (int64_t) and tick_size (int64_t), resolving §PRICE-RECON.
 
 #pragma once
 
@@ -23,16 +21,17 @@
 
 namespace egbos::l2 {
 
-static_assert(sizeof(egbos::l1::Top5BidsAsks) == 64,
-              "L1->L2 Top5BidsAsks ABI must remain 64 bytes");
+static_assert(sizeof(egbos::l1::Top5BidsAsks) == 128,
+              "L1->L2 Top5BidsAsks ABI must be 128 bytes (v2)");
 static_assert(alignof(egbos::l1::Top5BidsAsks) == 64,
               "L1->L2 Top5BidsAsks ABI must remain cache-line aligned");
 
-static_assert(offsetof(egbos::l1::Top5BidsAsks, bid_qtys) == 0);
-static_assert(offsetof(egbos::l1::Top5BidsAsks, ask_qtys) == 20);
-static_assert(offsetof(egbos::l1::Top5BidsAsks, bid_price_offsets) == 40);
-static_assert(offsetof(egbos::l1::Top5BidsAsks, ask_price_offsets) == 50);
-static_assert(offsetof(egbos::l1::Top5BidsAsks, anchor_price_low32) == 60);
+static_assert(offsetof(egbos::l1::Top5BidsAsks, bid_qtys)          ==   0);
+static_assert(offsetof(egbos::l1::Top5BidsAsks, ask_qtys)          ==  20);
+static_assert(offsetof(egbos::l1::Top5BidsAsks, bid_price_offsets) ==  40);
+static_assert(offsetof(egbos::l1::Top5BidsAsks, ask_price_offsets) ==  50);
+static_assert(offsetof(egbos::l1::Top5BidsAsks, anchor_price)      ==  64);
+static_assert(offsetof(egbos::l1::Top5BidsAsks, tick_size)         ==  72);
 
 static_assert(sizeof(egbos::shm::LobSnapshotBuffer) ==
               egbos::shm::kLobSnapshotPerBufferBytes,

@@ -1,0 +1,10 @@
+[TEST] Running deterministic tests...
+[L1Consumer] DEGRADED: frame gap: prev_u=100 new_U=102 new_u=102 (expected new_U=101) — setting feed_stale, halting LOB updates.
+  Snapshot recovery is not yet designed; this state is terminal until restart.
+[TEST] All deterministic tests PASSED.
+
+classification=LIVE_OPERATIONAL
+environment=BINANCE_PRODUCTION
+=== e2e_live_diagnostic ===
+Classification: LIVE_OPERATIONAL
+EGBOS TERMINAL_HALT: shm_init_all() failed during mlock on region /egbos_market_events (errno=12). Capital safety enforced — engine will not start.

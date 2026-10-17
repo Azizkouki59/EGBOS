@@ -76,7 +76,14 @@ target_compile_features(engine_l1 PUBLIC cxx_std_20)
 # contract is active yet. See governance/rfcs/drafts/CLAIM-L2-HAWKES-001.yaml
 # (pending) and governance/rfcs/RFC-003-L2-HAWKES-VPIN-FEATURE-SCOPING.yaml
 # for the current state of blocked/proposed L2 feature decisions.
-add_library(engine_l2 STATIC l2/feature_engine.cpp)
+#
+# feature_compute.cpp is the SOLE production feature computation TU.
+# It MUST NOT include any header from l2/candidates/ or any research module.
+# This is enforced by convention (comments) and audited at code review.
+add_library(engine_l2 STATIC
+    l2/feature_engine.cpp
+    l2/feature_compute.cpp
+)
 target_include_directories(engine_l2 PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}
@@ -84,8 +91,25 @@ target_include_directories(engine_l2 PUBLIC
 target_link_libraries(engine_l2 PUBLIC engine_core)
 target_compile_features(engine_l2 PUBLIC cxx_std_20)
 
+# ── L2 Candidate feature module (RESEARCH ONLY — header-only) ──
+# COMPUTABLE CANDIDATE — NOT AN EGBOS-APPROVED PRODUCTION FEATURE
+# No ratified EGBOS feature specification exists for this module (see
+# RFC-003 evidence section: no such document is present in this repository).
+#
+# CRITICAL ISOLATION: engine_l2_candidates is intentionally NOT linked into
+# engine_l2. This enforces the production/research boundary at the linker
+# level: the FeatureEngine binary cannot accidentally call candidate functions.
+# Any attempt to link engine_l2_candidates into engine_l2 is a governance
+# violation and must be rejected in code review.
+add_library(engine_l2_candidates INTERFACE)
+target_include_directories(engine_l2_candidates INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}
+)
+target_compile_features(engine_l2_candidates INTERFACE cxx_std_20)
+
 # ── L2 Hawkes intensity module (PENDING — header-only) ──────────────────
-# See governance/claims/CLAIM-L2-HAWKES-001.yaml (status: pending) and
+# See governance/rfcs/drafts/CLAIM-L2-HAWKES-001.yaml (status: pending) and
 # governance/rfcs/RFC-003-L2-HAWKES-VPIN-FEATURE-SCOPING.yaml.
 #
 # CRITICAL ISOLATION: engine_l2_hawkes is intentionally NOT linked into

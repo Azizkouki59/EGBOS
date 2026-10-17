@@ -258,6 +258,21 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_compile_features(test_l2_snapshot_reader PRIVATE cxx_std_20)
   gtest_discover_tests(test_l2_snapshot_reader)
 
+  # ── L2: Concurrent transport qualification (concurrency + TSAN) ──
+  # Tests LobSnapshotPublisher + double-buffer seqlock + LobSnapshotReader
+  # under one writer / one reader thread.  500,000 publish iterations.
+  # Generation-encoded payloads make torn reads immediately detectable.
+  # Publisher and reader are header-only — no extra .cpp sources needed.
+  # pthread is required for std::thread on Linux.
+  add_executable(test_l2_concurrent_transport
+    test_l2_concurrent_transport.cpp
+    ../l1/lob_engine.cpp
+  )
+  target_link_libraries(test_l2_concurrent_transport PRIVATE
+    engine_core engine_l2 GTest::gtest GTest::gtest_main pthread)
+  target_compile_features(test_l2_concurrent_transport PRIVATE cxx_std_20)
+  gtest_discover_tests(test_l2_concurrent_transport)
+
   # ── L2 → L3 FeatureRegion ABI transport tests ─────────────────────────────
   # Tests the per-instrument FeatureSlot seqlock protocol:
   #   publish/read, replacement, unpublished/torn/schema rejection,
@@ -276,11 +291,37 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 
 
 
+  # ── L2: Candidate feature module unit tests ──────────────────────────────
+  # COMPUTABLE CANDIDATE — NOT AN EGBOS-APPROVED PRODUCTION FEATURE
+  # (see research-only quantitative reference — NOT EGBOS-SPECIFIED and current unresolved governance decision §FEAT-CONTRACT)
+  #
+  # Tests the quantity-only computable candidates and the CKS OFI pure formula,
+  # including the verified verified research counterexample (OFI_A=0, OFI_B=40).
+  #
+  # CRITICAL ISOLATION: this test links engine_l2_candidates (research module)
+  # but NOT engine_l2 (production module). This enforces that candidate code
+  # never enters the production FeatureEngine object file.
+  add_executable(test_l2_candidates
+    test_l2_candidates.cpp
+  )
+  target_link_libraries(test_l2_candidates PRIVATE
+    engine_l2_candidates GTest::gtest GTest::gtest_main)
+  target_compile_features(test_l2_candidates PRIVATE cxx_std_20)
+  gtest_discover_tests(test_l2_candidates)
+
+  add_executable(test_l2_candidates_parity_fixture
+    test_l2_candidates_parity_fixture.cpp
+  )
+  target_link_libraries(test_l2_candidates_parity_fixture PRIVATE
+    engine_l2_candidates)
+  target_compile_features(test_l2_candidates_parity_fixture PRIVATE cxx_std_20)
+
   # ── L2: Hawkes intensity unit tests ──────────────────────────────────────
-  # governance/claims/CLAIM-L2-HAWKES-001.yaml (status: pending)
+  # governance/rfcs/drafts/CLAIM-L2-HAWKES-001.yaml (status: pending)
   #
   # CRITICAL ISOLATION: links engine_l2_hawkes (pending module) but NOT
-  # engine_l2 (production module). This must not enter the production
+  # engine_l2 (production module). Same isolation pattern as
+  # test_l2_candidates above — this must not enter the production
   # FeatureEngine object file until the claim is active.
   add_executable(test_hawkes_intensity
     test_hawkes_intensity.cpp

@@ -120,7 +120,10 @@ void L1Consumer::process_slot(const shm::MarketEventSlot& slot) noexcept {
         // First-event initialization paths that have no LobEngine yet are
         // intentionally unchanged.
         if (snapshot_publisher_ != nullptr) {
-            const Top5BidsAsks snapshot = lob_->generate_top5_snapshot();
+            // Pass the L0 ingestion timestamp so L2 Hawkes decay uses source
+            // event time rather than the L2 wall clock (P-003 / A1.6).
+            const uint64_t event_ts = event->ingestion_tsc();
+            const Top5BidsAsks snapshot = lob_->generate_top5_snapshot(event_ts);
             (void)snapshot_publisher_->publish(
                 event->instrument_id(),
                 snapshot);

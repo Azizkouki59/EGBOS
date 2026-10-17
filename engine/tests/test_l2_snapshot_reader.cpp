@@ -32,7 +32,8 @@ TEST(L2SnapshotTransportTest, PublishAndReadExactTop5Payload) {
     expected.ask_qtys[1] = 444;
     expected.bid_price_offsets[0] = 12;
     expected.ask_price_offsets[0] = 13;
-    expected.anchor_price_low32 = 0x12345678u;
+    expected.anchor_price          = 0x12345678LL;
+    expected.tick_size              = 100LL;
 
     ASSERT_TRUE(publisher.publish(7, expected));
 

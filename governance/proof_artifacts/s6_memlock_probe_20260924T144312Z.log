@@ -1,0 +1,34 @@
+[TEST] Running deterministic tests...
+[L1Consumer] DEGRADED: frame gap: prev_u=100 new_U=102 new_u=102 (expected new_U=101) — setting feed_stale, halting LOB updates.
+  Snapshot recovery is not yet designed; this state is terminal until restart.
+[TEST] All deterministic tests PASSED.
+
+classification=LIVE_OPERATIONAL
+environment=BINANCE_PRODUCTION
+=== e2e_live_diagnostic ===
+Classification: LIVE_OPERATIONAL
+market_events_shm=/egbos_market_events
+governance_flags_shm=/egbos_governance_flags
+tier0_path=/tmp/egbos_tier0_live.bin
+tier0_fd=3
+
+=== FINAL SUMMARY ===
+classification=LIVE_OPERATIONAL
+environment=BINANCE_PRODUCTION
+market_events_shm=/egbos_market_events
+governance_flags_shm=/egbos_governance_flags
+Duration       : 10s
+frames_received=86
+frames_parsed=86
+events_written=3590
+slots_consumed=3590
+sequence_gaps=0
+duplicate_or_out_of_order=0
+degraded_state=false
+lob_initialized=true
+lob_mutations=3590
+bbo_updates=3590
+BBO Top-5 Snap : B0_Qty:9738 A0_Qty:396921
+Tier0 bytes    : 459520
+Tier0 slots    : 3590
+Tier0 slot ABI : 128

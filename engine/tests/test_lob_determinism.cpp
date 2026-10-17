@@ -51,21 +51,17 @@ TEST(LobDeterminismTest, GoldenFixtureExists) {
     // sequence and write it to disk.  A test framework failure here means
     // the proof artifact directory is missing — governance issue, not code.
     auto path = golden_path();
-    if (!std::filesystem::exists(path)) {
-        if (std::getenv("EGBOS_REGENERATE_GOLDEN") != nullptr) {
-            auto snap = run_canonical_sequence();
-            std::filesystem::create_directories(path.parent_path());
-            std::ofstream out(path, std::ios::binary | std::ios::trunc);
-            ASSERT_TRUE(out.is_open()) << "Cannot write golden fixture: " << path;
-            out.write(reinterpret_cast<const char*>(&snap), sizeof(snap));
-            ASSERT_TRUE(out.good()) << "Write failed: " << path;
-            out.close();
-            GTEST_SKIP() << "Golden fixture written for the first time. "
-                            "Re-run to validate determinism.";
-        } else {
-            FAIL() << "Golden fixture is missing. A governance decision is required. "
-                   << "Set EGBOS_REGENERATE_GOLDEN=1 to regenerate if authorized.";
-        }
+    if (std::getenv("EGBOS_REGENERATE_GOLDEN") != nullptr) {
+        auto snap = run_canonical_sequence();
+        std::filesystem::create_directories(path.parent_path());
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open()) << "Cannot write golden fixture: " << path;
+        out.write(reinterpret_cast<const char*>(&snap), sizeof(snap));
+        ASSERT_TRUE(out.good()) << "Write failed: " << path;
+        out.close();
+    } else if (!std::filesystem::exists(path)) {
+        FAIL() << "Golden fixture is missing. A governance decision is required. "
+               << "Set EGBOS_REGENERATE_GOLDEN=1 to regenerate if authorized.";
     }
 
     // Read back the committed golden fixture.
@@ -114,8 +110,8 @@ TEST(LobDeterminismTest, ThreeXByteIdenticalReplayAgainstGolden) {
 
 // ── Cache-line alignment invariant ──────────────────────────────────────────
 TEST(LobDeterminismTest, CacheLineAlignment) {
-    // I-S2-004: Top5BidsAsks must be exactly 64 bytes (one L2 cache line).
-    ASSERT_EQ(sizeof(egbos::l1::Top5BidsAsks), 64u);
+    // I-S2-004: Top5BidsAsks is now 128 bytes (two cache lines, ABI v2).
+    ASSERT_EQ(sizeof(egbos::l1::Top5BidsAsks), 128u);
 }
 
 // ── Collision Resolution Invariant ──────────────────────────────────────────
@@ -163,7 +159,8 @@ TEST(LobDeterminismTest, CollisionHandling) {
 
 TEST(LobDeterminismTest, CanonicalSequenceSemanticAssertions) {
     auto snap = run_canonical_sequence();
-    EXPECT_EQ(snap.anchor_price_low32, 100000);
+    EXPECT_EQ(snap.anchor_price, 100000LL);
+    EXPECT_EQ(snap.tick_size,     100LL);
 
     EXPECT_EQ(snap.bid_qtys[0], 10);
     EXPECT_EQ(snap.bid_qtys[1], 0);
