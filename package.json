@@ -1,0 +1,27 @@
+{
+  "name": "egbos-backend",
+  "version": "1.0.0",
+  "description": "EGBOS Gemini AI Backend API",
+  "main": "backend/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node --watch backend/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github-azizkouki59:Azizkouki59/EGBOS.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/genai": "^3.4.0",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.10",
+    "express": "^5.3.0"
+  }
+}
