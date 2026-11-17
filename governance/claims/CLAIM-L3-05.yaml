@@ -32,7 +32,7 @@ composition_dependencies: []
 composed_verification_class: V3
 proof_artifacts:
   - path: engine/core/execution_router.cpp
-    sha256: 98127e523690f8640a78aad89665b62b8737a80e32679873d6a131d8209f11f0
+    sha256: eb773df83656a1ffad2f631d9243da1e0281e6b0f3a9a1db15f403d50625d7fc
     type: source
     description: ExecutionRouter implementation with commands_consumed counter
   - path: engine/core/execution_router.h
@@ -66,5 +66,15 @@ review_history:
       e78ba5a3...382360 to 396224dc...f349 to match S6 source change.
       Verification class, rationale, and deployment-blocking status unchanged.
       Authorized by RFC-002 (commit b654a93).
+  - date: "2026-11-17T13:39:00+01:00"
+    reviewer: "aziz"
+    action: "hash_repin"
+    class_at_review: "V3"
+    notes: >-
+      proof_artifact sha256 for engine/core/execution_router.cpp updated from
+      98127e52...f11f0 to eb773df8...d7fc to reflect governance API alignment
+      fix (commit ccd04f7: removed shm:: namespace prefix after ExecCommandsRegion
+      was promoted to egbos::l5 namespace). Verification class, rationale, and
+      deployment-blocking status unchanged.
 superseded_by: null
 amendments: []

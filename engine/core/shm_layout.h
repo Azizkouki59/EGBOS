@@ -503,10 +503,13 @@ static_assert(sizeof(FeatureVectorRegion) <=  kFeatureVectorRegionSize,
 //   [ 24 – 31]  pub_ts_ns      uint64_t  — publication timestamp (CLOCK_MONOTONIC_RAW, ns)
 //   [ 32 – 39]  validity_mask  uint64_t  — bit N=1 ↔ feature N is valid
 //   [ 40 – 43]  payload_bytes        uint32_t    — meaningful bytes in payload (≤ kFeatureSlotPayloadBytes)
-//   [ 44 – 51]  source_event_ts_ns   uint64_t    — L0 ingestion timestamp (CLOCK_MONOTONIC_RAW, ns)
-//   [ 52 – 63]  reserved_b           uint8_t[12] — must be 0; forward-compatible growth
+//   [ 44 – 47]  _pad4                uint32_t    — alignment padding, must be 0
+//   [ 48 – 55]  source_event_ts_ns   uint64_t    — L0 ingestion timestamp (CLOCK_MONOTONIC_RAW, ns)
+//   [ 56 – 63]  reserved_b           uint8_t[8]  — must be 0; forward-compatible growth
 //
 // Field ordering: largest-alignment types first to avoid implicit padding.
+// NOTE: _pad4 at [44–47] is required because uint64_t requires 8-byte alignment;
+//       without it the compiler inserts invisible padding and the struct grows to 72 bytes.
 struct FeatureSlotHeader {
     std::atomic<uint64_t> sequence{0};   // bytes  0– 7: seqlock counter
     uint32_t  instrument_id{0};          // bytes  8–11
@@ -514,11 +517,12 @@ struct FeatureSlotHeader {
     uint8_t   reserved_a{0};             // byte  13: must be 0
     uint16_t  payload_count{0};          // bytes 14–15: number of valid features
     uint64_t  source_seq{0};             // bytes 16–23: L1 snapshot seq that triggered this
-    uint64_t  pub_ts_ns{0};             // bytes 24–31: CLOCK_MONOTONIC_RAW ns
+    uint64_t  pub_ts_ns{0};              // bytes 24–31: CLOCK_MONOTONIC_RAW ns
     uint64_t  validity_mask{0};          // bytes 32–39: bit N=1 → feature N valid
     uint32_t  payload_bytes{0};          // bytes 40–43: meaningful bytes in payload
-    uint64_t  source_event_ts_ns{0};    // bytes 44–51: L0 ingestion timestamp (CLOCK_MONOTONIC_RAW, ns)
-    uint8_t   reserved_b[12]{};          // bytes 52–63: must be 0
+    uint32_t  _pad4{0};                  // bytes 44–47: explicit alignment padding, must be 0
+    uint64_t  source_event_ts_ns{0};     // bytes 48–55: L0 ingestion timestamp (CLOCK_MONOTONIC_RAW, ns)
+    uint8_t   reserved_b[8]{};           // bytes 56–63: must be 0
 };
 
 static_assert(sizeof(FeatureSlotHeader) == 64,
@@ -535,8 +539,9 @@ static_assert(offsetof(FeatureSlotHeader, source_seq)     == 16, "FeatureSlotHea
 static_assert(offsetof(FeatureSlotHeader, pub_ts_ns)      == 24, "FeatureSlotHeader layout");
 static_assert(offsetof(FeatureSlotHeader, validity_mask)  == 32, "FeatureSlotHeader layout");
 static_assert(offsetof(FeatureSlotHeader, payload_bytes)         == 40, "FeatureSlotHeader layout");
-static_assert(offsetof(FeatureSlotHeader, source_event_ts_ns)    == 44, "FeatureSlotHeader layout");
-static_assert(offsetof(FeatureSlotHeader, reserved_b)            == 52, "FeatureSlotHeader layout");
+static_assert(offsetof(FeatureSlotHeader, _pad4)                 == 44, "FeatureSlotHeader layout");
+static_assert(offsetof(FeatureSlotHeader, source_event_ts_ns)    == 48, "FeatureSlotHeader layout");
+static_assert(offsetof(FeatureSlotHeader, reserved_b)            == 56, "FeatureSlotHeader layout");
 
 // ── FeatureSlot ───────────────────────────────────────────────────────────
 //
@@ -590,6 +595,7 @@ struct alignas(64) FeatureSlot {
         header.source_event_ts_ns  = source_event_ts_ns;
         header.validity_mask       = validity_mask;
         header.payload_bytes       = src_payload_bytes;
+        header._pad4               = 0u;
         std::memset(header.reserved_b, 0, sizeof(header.reserved_b));
 
         // Phase 3: write payload.
@@ -607,6 +613,20 @@ struct alignas(64) FeatureSlot {
         std::atomic_thread_fence(std::memory_order_seq_cst);
         header.sequence.fetch_add(1, std::memory_order_seq_cst);
         return true;
+    }
+
+    bool publish(
+        uint32_t  instrument_id,
+        uint8_t   schema_ver,
+        uint64_t  source_seq,
+        uint64_t  pub_ts_ns,
+        uint64_t  validity_mask,
+        uint16_t  feature_count,
+        const uint8_t* src_payload,
+        uint32_t  src_payload_bytes) noexcept
+    {
+        return publish(instrument_id, schema_ver, source_seq, pub_ts_ns, 0u,
+                       validity_mask, feature_count, src_payload, src_payload_bytes);
     }
 
     // ── Reader API (L3 DecisionEngine — non-spinning, returns false on torn) ──
@@ -665,6 +685,24 @@ struct alignas(64) FeatureSlot {
         if (out_instrument_id != expected_instrument_id) return false;
 
         return true;
+    }
+
+    [[nodiscard]] bool try_read(
+        uint32_t  expected_instrument_id,
+        uint32_t& out_instrument_id,
+        uint8_t&  out_schema_ver,
+        uint64_t& out_source_seq,
+        uint64_t& out_pub_ts_ns,
+        uint64_t& out_validity_mask,
+        uint16_t& out_payload_count,
+        uint32_t& out_payload_bytes,
+        uint8_t*  out_payload) const noexcept
+    {
+        uint64_t dummy_event_ts = 0;
+        return try_read(expected_instrument_id, out_instrument_id, out_schema_ver,
+                        out_source_seq, out_pub_ts_ns, dummy_event_ts,
+                        out_validity_mask, out_payload_count, out_payload_bytes,
+                        out_payload);
     }
 };
 

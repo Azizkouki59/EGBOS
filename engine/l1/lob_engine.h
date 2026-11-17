@@ -68,7 +68,7 @@ public:
     // event_ts_ns: the RawMarketEvent::ingestion_tsc for this snapshot
     //   (CLOCK_MONOTONIC_RAW nanoseconds at socket receive).  Written to
     //   snapshot.source_event_ts_ns for deterministic L2 replay (P-003/A1.6).
-    Top5BidsAsks generate_top5_snapshot(uint64_t event_ts_ns) const noexcept;
+    Top5BidsAsks generate_top5_snapshot(uint64_t event_ts_ns = 0) const noexcept;
 
     // ── Read-only BBO accessors (CLI / diagnostic use) ────────────────────────
     struct Level {

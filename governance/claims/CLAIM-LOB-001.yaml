@@ -30,7 +30,7 @@ rfc_references:
 proof_artifacts:
   - path: "governance/proof_artifacts/golden_lob.bin"
     type: "golden_fixture"
-    sha256: "c64ebd32be50fd29385f15f0fdb28115fd2388bedd6cd2288cf1fe25e4c17440"
+    sha256: "b91dcaca59a026bb6608d71db776f02dec9bd8c835647ddd9a5c9af343deabfa"
   - path: "governance/proof_artifacts/lob_fuzzer_report.log"
     type: "fuzzer_log"
     sha256: "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
@@ -44,6 +44,16 @@ review_history:
       per S2_GOLDEN_LOB_FIXTURE_AMENDMENT.md (byte-order correction).
       Verification class V4, 3x replay methodology, GC-E-010 enforcement unchanged.
       Authorized by RFC-002 (commit b654a93).
+  - date: "2026-11-17T13:39:00+01:00"
+    reviewer: "aziz"
+    action: "hash_repin"
+    class_at_review: "V4"
+    notes: >-
+      Golden fixture sha256 updated from c64ebd32...7440 to b91dcaca...abfa
+      following WIP commit 406165c (ABI v2 + L2 feature engine sprint): golden_lob.bin
+      was regenerated to reflect LobEngine zero-initialised bid/ask levels fix
+      (commit 8d3cffd4). Verification class V4, 3x replay methodology, GC-E-010
+      enforcement unchanged.
 created_at:                    "2026-07-16T00:00:00Z"
 created_by:                    "@founder"
 last_reviewed:                 "2026-07-16T00:00:00Z"
